@@ -1,17 +1,18 @@
 from typing import Dict, List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Security
 from app.models.RequestsTodos import Todo
 from app.models.ResponseTodos import TodosBase
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
 from app.services.todo_service import TodoService
+from app.shared.auth import api_verifier
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 service = TodoService()
 
 
 @router.get("/", response_model=TodosBase)
-async def get_todos() -> Dict[str, List[Todo]]:
+async def get_todos(token: str = Security(api_verifier)) -> Dict[str, List[Todo]]:
     """
     Retrieve a list of todos.
 
@@ -25,7 +26,7 @@ async def get_todos() -> Dict[str, List[Todo]]:
 
 
 @router.get("/{todo_id}", response_model=None)
-async def get_todo(todo_id: int)-> Dict[str, Todo|str]:
+async def get_todo(todo_id: int,token: str = Security(api_verifier))-> Dict[str, Todo|str]:
     """
     Retrieves a specific to-do item by its ID. Searches through the
     list of to-do items and returns the item if found. If the item
@@ -45,7 +46,7 @@ async def get_todo(todo_id: int)-> Dict[str, Todo|str]:
 
 
 @router.post("/", response_model=None)
-async def create_todo(todo: Todo)-> Dict[str, str]:
+async def create_todo(todo: Todo,token: str = Security(api_verifier))-> Dict[str, str]:
     """
     Handles the creation of a new todo item and appends it to the existing list of todos.
 
@@ -57,7 +58,7 @@ async def create_todo(todo: Todo)-> Dict[str, str]:
 
 
 @router.put("/{todo_id}", response_model=None)
-async def update_todo(todo_id: int, todo_obj: Todo)-> Dict[str, str]:
+async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_verifier))-> Dict[str, str]:
     """
     Updates an existing todo item identified by its ID. This function iterates
     through the list of todos to find a matching ID, then updates the title
@@ -81,7 +82,7 @@ async def update_todo(todo_id: int, todo_obj: Todo)-> Dict[str, str]:
 
 
 @router.delete("/{todo_id}", response_model=None)
-async def delete_todo(todo_id: int) -> Dict[str, str]:
+async def delete_todo(todo_id: int,token: str = Security(api_verifier)) -> Dict[str, str]:
     """
     Deletes a specific todo item by its unique identifier.
 
