@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.v1.todos import router as todo_router
 
 
 app = FastAPI(title="FastAPI Todos")
@@ -16,3 +17,4 @@ async def health_check():
     """
     return {"status": "ok"}
 
+app.include_router(todo_router)
