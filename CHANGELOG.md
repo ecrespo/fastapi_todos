@@ -2,9 +2,13 @@
 
 All notable changes to this project are documented here. This changelog captures the most recent commit history at the time of generation.
 
-Generated: 2025-10-19 12:37 (local time)
+Generated: 2025-10-19 13:50 (local time)
 
 ## 2025-10-19
+- docs — Update project-specific development guidelines in README.md (Ernesto Crespo)
+- 63d69df — Add `created_at` and `status` columns to `todos` table (Ernesto Crespo)
+- 825706e — Add Alembic for database migrations and migrate to SQLAlchemy for async ORM (Ernesto Crespo)
+- 5fa5f23 — Add async database connection management (Ernesto Crespo)
 - 205efb6 — Add secure headers middleware (Ernesto Crespo)
 - a946bc2 — Introduce async database support with aiosqlite and overhaul Todos API (Ernesto Crespo)
 - b612852 — Add documentation files (Ernesto Crespo)
@@ -20,5 +24,5 @@ Generated: 2025-10-19 12:37 (local time)
 - 0044212 — Initial commit (Ernesto Crespo)
 
 Notes:
-- This file reflects the latest 5–10 commits pulled directly from git history.
+- This file reflects up to the latest 205 commits pulled directly from git history (repository currently includes 14 commits).
 - Future releases may adopt Keep a Changelog format with versioned sections and categorized changes (Added, Changed, Fixed, etc.).

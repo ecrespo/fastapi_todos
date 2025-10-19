@@ -34,6 +34,7 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
   - HTTPSRedirectMiddleware: only when APP_ENV=prod (beware if you export APP_ENV=prod locally; HTTP will redirect to HTTPS and can break assumptions/tests).
   - CORSMiddleware: permissive (all origins/methods/headers; credentials disabled).
   - GZipMiddleware: enabled.
+  - Secure headers: applied via the 'secure' library in a custom HTTP middleware; Content-Security-Policy is relaxed to allow FastAPI docs assets (Swagger UI/ReDoc) from jsdelivr/redoc.ly.
   - Custom middlewares (outermost first): ErrorHandlingMiddleware, then LoggingMiddleware, ProcessTimeHeaderMiddleware.
   - Rate limiting via slowapi (see app/shared/rate_limiter.py). Use @limiter.limit on endpoints; /healthcheck limited to 5/min by default.
 
@@ -42,6 +43,7 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
   - docker-compose up --build exposes 9000:9000.
   - Entrypoint runs: uv run --env-file .env python3 run.py (ensure .env exists if you rely on it).
   - Volumes: ./logs and ./app mounted for live code changes.
+  - Port caveat: The app defaults to port 8000 (see run.py). To match the 9000:9000 mapping, set PORT=9000 in your .env, or adjust compose ports to 9000:8000 (host:container) or 8000:8000.
 
 2) Testing
 
@@ -78,7 +80,13 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
 
         resp_get = client.get("/api/v1/todos/42")
         assert resp_get.status_code == 200
-        assert resp_get.json() == {"todo": {"id": 42, "item": "demo-item"}}
+        data = resp_get.json()
+        assert "todo" in data
+        assert data["todo"]["id"] == 42
+        assert data["todo"]["item"] == "demo-item"
+        # Additional fields are present in current model
+        assert "status" in data["todo"]
+        assert "created_at" in data["todo"]
 
 - Adding a unit-style test without DB side-effects
   - Monkeypatch the module-level service used by the router to a fake service. See tests/test_todos_unit.py for the pattern:
@@ -103,8 +111,18 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
   - All /api/v1/todos endpoints require a Bearer token that exists and is active in auth_tokens (see app/shared/auth.py). The shared test fixture inserts 'test-token' and preconfigures Authorization headers on the TestClient.
 
 - Database layer
-  - SQLite with minimal schema managed in app/shared/db.py. DB_PATH is derived from Settings.db_path at import time; tests override app.shared.db.DB_PATH prior to connection creation and then call init_db().
+  - SQLite with SQLAlchemy Async engine and declarative models defined in app/shared/db.py. Schema is created via Base.metadata.create_all at startup (init_db_async in app.main lifespan) and in tests via init_db().
+  - DB_PATH is derived from Settings.db_path at import time; tests override app.shared.db.DB_PATH prior to connection creation. init_db() resets the async engine so re-pointing DB_PATH takes effect.
   - If you need to re-point the DB at runtime, update the module-level DB_PATH before obtaining new connections.
+  - Todo model fields include: id, item, created_at (server default CURRENT_TIMESTAMP), and status (Enum: start, in_process, pending, done, cancel; default pending).
+  - ensure_auth_token uses a sync sqlite3 connection for compatibility with test setup.
+
+- Migrations (Alembic)
+  - Alembic is configured (alembic.ini, alembic/env.py). The app does not run Alembic on startup; it uses SQLAlchemy create_all for schema.
+  - Upgrade to the latest migration:
+    - uv run alembic upgrade head
+  - Create a new migration with autogenerate (ensure models are up-to-date and set DATABASE_URL or rely on alembic.ini):
+    - uv run alembic revision --autogenerate -m "your message"
 
 - Service and repository abstraction
   - app/services/todo_service.py encapsulates domain logic.
