@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 import os
 import tempfile
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,25 +18,32 @@ from app.shared.db import init_db
 
 class MockRepository:
     def __init__(self) -> None:
-        self._store: Dict[int, str] = {}
+        # store maps id to a tuple (item, status, created_at)
+        self._store: Dict[int, tuple[str, str, datetime]] = {}
 
     # Repository interface
     def get_all(self) -> List[Todo]:
-        return [Todo(id=k, item=v) for k, v in sorted(self._store.items())]
+        todos: List[Todo] = []
+        for k in sorted(self._store.keys()):
+            item, status, created_at = self._store[k]
+            todos.append(Todo(id=k, item=item, status=status, created_at=created_at))
+        return todos
 
     def get_by_id(self, todo_id: int) -> Optional[Todo]:
         if todo_id in self._store:
-            return Todo(id=todo_id, item=self._store[todo_id])
+            item, status, created_at = self._store[todo_id]
+            return Todo(id=todo_id, item=item, status=status, created_at=created_at)
         return None
 
     def create(self, todo: Todo) -> None:
-        self._store[todo.id] = todo.item
+        self._store[todo.id] = (todo.item, str(todo.status), todo.created_at or datetime.now())
 
-    def update(self, todo_id: int, item: str) -> Optional[Todo]:
+    def update(self, todo_id: int, todo: Todo) -> Optional[Todo]:
         if todo_id not in self._store:
             return None
-        self._store[todo_id] = item
-        return Todo(id=todo_id, item=item)
+        _, _, created_at = self._store[todo_id]
+        self._store[todo_id] = (todo.item, str(todo.status), created_at)
+        return Todo(id=todo_id, item=todo.item, status=todo.status, created_at=created_at)
 
     def delete(self, todo_id: int) -> bool:
         return self._store.pop(todo_id, None) is not None
@@ -82,16 +90,29 @@ def test_get_all_todos(unit_client: TestClient):
     assert res.status_code == 200
     data = res.json()
     assert "todos" in data
-    assert data["todos"] == [
-        {"id": 1, "item": "alpha"},
-        {"id": 2, "item": "beta"},
-    ]
+    todos = data["todos"]
+    assert isinstance(todos, list)
+    assert len(todos) == 2
+    assert todos[0]["id"] == 1
+    assert todos[0]["item"] == "alpha"
+    assert "status" in todos[0]
+    assert "created_at" in todos[0]
+    assert todos[1]["id"] == 2
+    assert todos[1]["item"] == "beta"
+    assert "status" in todos[1]
+    assert "created_at" in todos[1]
 
 
 def test_get_single_todo_found(unit_client: TestClient):
     res = unit_client.get("/api/v1/todos/1")
     assert res.status_code == 200
-    assert res.json() == {"todo": {"id": 1, "item": "alpha"}}
+    data = res.json()
+    assert "todo" in data
+    todo = data["todo"]
+    assert todo["id"] == 1
+    assert todo["item"] == "alpha"
+    assert "status" in todo
+    assert "created_at" in todo
 
 
 def test_get_single_todo_not_found(unit_client: TestClient):
@@ -104,15 +125,27 @@ def test_create_todo(unit_client: TestClient):
     res = unit_client.post("/api/v1/todos/", json={"id": 3, "item": "gamma"})
     assert res.status_code == 200
     assert res.json() == {"message": "Todo has been created successfully!"}
-    # Verify it appears in list
+    # Verify it appears in list with new fields present
     res2 = unit_client.get("/api/v1/todos/3")
-    assert res2.json() == {"todo": {"id": 3, "item": "gamma"}}
+    data = res2.json()
+    assert "todo" in data
+    todo = data["todo"]
+    assert todo["id"] == 3
+    assert todo["item"] == "gamma"
+    assert "status" in todo
+    assert "created_at" in todo
 
 
 def test_update_todo_found(unit_client: TestClient):
     res = unit_client.put("/api/v1/todos/2", json={"id": 2, "item": "beta-upd"})
     assert res.status_code == 200
-    assert res.json() == {"todo": {"id": 2, "item": "beta-upd"}}
+    data = res.json()
+    assert "todo" in data
+    todo = data["todo"]
+    assert todo["id"] == 2
+    assert todo["item"] == "beta-upd"
+    assert "status" in todo
+    assert "created_at" in todo
 
 
 def test_update_todo_not_found(unit_client: TestClient):

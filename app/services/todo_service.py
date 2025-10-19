@@ -33,7 +33,7 @@ class TodoService:
 
     async def update_todo(self, todo_id: int, todo_obj: Todo) -> Optional[Todo]:
         # Example: could validate item content, enforce constraints, etc.
-        return await _maybe_await(self._repo.update(todo_id, todo_obj.item))
+        return await _maybe_await(self._repo.update(todo_id, todo_obj))
 
     async def delete_todo(self, todo_id: int) -> bool:
         return await _maybe_await(self._repo.delete(todo_id))

@@ -25,7 +25,7 @@ def upgrade() -> None:
         'todos',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('item', sa.Text(), nullable=False),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.text("'2025-10-19 00:00:00'"), nullable=False),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
         sa.Column('status', todo_status, server_default=sa.text("'pending'"), nullable=False),
     )
 

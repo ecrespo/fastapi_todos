@@ -3,7 +3,7 @@ from typing import Dict, List
 from fastapi import APIRouter, Security
 from app.shared.rate_limiter import limiter
 from app.models.RequestsTodos import Todo
-from app.models.ResponseTodos import TodosBase
+from app.models.ResponseTodos import TodosBase, TodoResponse
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
 from app.services.todo_service import TodoService
 from app.shared.auth import api_verifier
@@ -63,7 +63,7 @@ async def create_todo(todo: Todo,token: str = Security(api_verifier))-> Dict[str
 
 @router.put("/{todo_id}", response_model=None)
 @limiter.limit("5/minute")
-async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_verifier))-> Dict[str, str]:
+async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_verifier))-> Dict[str, Todo | str]:
     """
     Updates an existing todo item identified by its ID. This function iterates
     through the list of todos to find a matching ID, then updates the title

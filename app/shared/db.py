@@ -54,7 +54,7 @@ class TodoORM(Base):
     item: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[Optional[str]] = mapped_column(
         DateTime,
-        server_default=text("'2025-10-19 00:00:00'"),
+        server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
     status: Mapped[TodoStatus] = mapped_column(SAEnum(TodoStatus, name="todo_status"), nullable=False, server_default=text("'pending'"))
