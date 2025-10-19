@@ -12,7 +12,7 @@ from secure import Secure
 from app.shared.rate_limiter import setup_rate_limiter, limiter
 from app.api.v1.todos import router as todo_router
 from app.shared.config import get_settings, Environment
-from app.shared.db import init_db_async, ensure_auth_token, close_async_connection
+from app.shared.db import init_db_async, ensure_auth_token_async, close_async_connection
 from app.shared.LoggerSingleton import logger
 from app.middlewares import (
     ErrorHandlingMiddleware,
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     await init_db_async()
     # Ensure a default auth token exists for CRUD of todos
     env_token = os.getenv("AUTH_DEFAULT_TOKEN")
-    token_value, created = ensure_auth_token(name="auth_crud_todos", token=env_token)
+    token_value, created = await ensure_auth_token_async(name="auth_crud_todos", token=env_token)
     if created and env_token is None:
         # Log only if we generated it (not if provided via env)
         logger.info("Created default auth token for 'auth_crud_todos'. Token: %s", token_value)

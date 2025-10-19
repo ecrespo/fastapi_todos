@@ -36,11 +36,24 @@ class Settings(BaseSettings):
     debug: bool = False
     app_name: str = "FastAPI Todos"
 
-    # Database settings (sqlite for this project tests)
+    # Database selection and connection
+    # Primary switch: which backend to use. Defaults to sqlite to preserve tests behavior.
+    db_engine: str = Field(default="sqlite", alias="DB_ENGINE")  # one of: sqlite, mysql, postgresql
+    # Optional full DATABASE_URL; if provided, it takes precedence over individual params.
+    database_url: str | None = Field(default=None, alias="DATABASE_URL")
+
+    # SQLite-specific settings (kept for backward compatibility with tests)
     # Directory where DB file should be stored; default to the package directory
     todo_db_dir: Path = Field(default=Path(__file__).parent, alias="TODO_DB_DIR")
     # Database filename, e.g., todos.db or :memory:
     todo_db_filename: str = Field(default="todos.db", alias="TODO_DB_FILENAME")
+
+    # Generic connection parts for MySQL/PostgreSQL (used if database_url not set)
+    db_host: str = Field(default="localhost", alias="DB_HOST")
+    db_port: int | None = Field(default=None, alias="DB_PORT")
+    db_user: str | None = Field(default=None, alias="DB_USER")
+    db_password: str | None = Field(default=None, alias="DB_PASSWORD")
+    db_name: str | None = Field(default=None, alias="DB_NAME")
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

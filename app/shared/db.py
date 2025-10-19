@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Protocol
 
 from sqlalchemy import (
     Enum as SAEnum,
@@ -16,21 +16,90 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-from app.shared.config import get_settings
+from app.shared.config import get_settings, Settings
 
 # Resolve DB path using settings and .env
 _settings = get_settings()
 DB_PATH: Path | str = _settings.db_path
 
 
+class DatabaseStrategy(Protocol):
+    def build_async_url(self) -> str:
+        ...
+
+    def name(self) -> str:
+        ...
+
+
+class SQLiteStrategy:
+    def __init__(self, settings: Settings, db_path: Path | str) -> None:
+        self.settings = settings
+        self.db_path = db_path
+
+    def build_async_url(self) -> str:
+        # Support ':memory:' and file paths
+        if isinstance(self.db_path, Path):
+            return f"sqlite+aiosqlite:///{self.db_path}"
+        if str(self.db_path) == ":memory:":
+            return "sqlite+aiosqlite://"
+        return f"sqlite+aiosqlite:///{self.db_path}"
+
+    def name(self) -> str:
+        return "sqlite"
+
+
+class MySQLStrategy:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def build_async_url(self) -> str:
+        if self.settings.database_url:
+            return self.settings.database_url
+        user = self.settings.db_user or "root"
+        pwd = self.settings.db_password or ""
+        host = self.settings.db_host
+        port = self.settings.db_port or 3306
+        db = self.settings.db_name or "todos"
+        auth = f"{user}:{pwd}@" if pwd else f"{user}@"
+        return f"mysql+aiomysql://{auth}{host}:{port}/{db}"
+
+    def name(self) -> str:
+        return "mysql"
+
+
+class PostgresStrategy:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def build_async_url(self) -> str:
+        if self.settings.database_url:
+            return self.settings.database_url
+        user = self.settings.db_user or "postgres"
+        pwd = self.settings.db_password or ""
+        host = self.settings.db_host
+        port = self.settings.db_port or 5432
+        db = self.settings.db_name or "todos"
+        auth = f"{user}:{pwd}@" if pwd else f"{user}@"
+        return f"postgresql+asyncpg://{auth}{host}:{port}/{db}"
+
+    def name(self) -> str:
+        return "postgresql"
+
+
+def _get_strategy(settings: Settings, db_path: Path | str) -> DatabaseStrategy:
+    engine = (settings.db_engine or "sqlite").strip().lower()
+    if engine == "mysql":
+        return MySQLStrategy(settings)
+    if engine in {"postgres", "postgresql"}:
+        return PostgresStrategy(settings)
+    # default sqlite
+    return SQLiteStrategy(settings, db_path)
+
+
 def _build_database_url(db_path: Path | str) -> str:
-    # Support ':memory:' and file paths
-    if isinstance(db_path, Path):
-        return f"sqlite+aiosqlite:///{db_path}"
-    if str(db_path) == ":memory:":
-        return "sqlite+aiosqlite://"
-    # Any other string assume file path
-    return f"sqlite+aiosqlite:///{db_path}"
+    # Backward-compatible helper used by tests; now delegates to selected strategy
+    strategy = _get_strategy(_settings, db_path)
+    return strategy.build_async_url()
 
 DATABASE_URL: str = _build_database_url(DB_PATH)
 
@@ -79,7 +148,16 @@ def _ensure_engine() -> tuple[AsyncEngine, sessionmaker]:
     if _engine is None:
         # Build URL from the current DB_PATH instead of the module-time constant to honor test overrides
         db_url = _build_database_url(DB_PATH)
-        _engine = create_async_engine(db_url, future=True)
+        try:
+            _engine = create_async_engine(db_url, future=True)
+        except ModuleNotFoundError as e:
+            # Likely missing async DB driver for selected backend
+            raise RuntimeError(
+                f"Missing database driver for URL '{db_url}'. "
+                f"Install the appropriate driver (e.g., 'aiosqlite' for sqlite, 'aiomysql' for MySQL, 'asyncpg' for PostgreSQL)."
+            ) from e
+        except Exception as e:
+            raise
         _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False, class_=AsyncSession)
     assert _SessionFactory is not None
     return _engine, _SessionFactory

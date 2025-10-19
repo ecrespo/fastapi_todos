@@ -292,3 +292,42 @@ Appendix: Quickstart
 - Run app: uv run python run.py
 - Run all tests: uv run pytest -q
 - Run within Docker: docker-compose up --build
+
+
+
+### Database backend selection (sqlite, mysql, postgresql)
+
+This project now supports selecting the database backend via environment variables using Factory and Strategy patterns under app/shared/db.py.
+
+- Default backend is SQLite (aiosqlite) and is used by tests.
+- To select another backend, set the following env vars (examples):
+
+1) SQLite (default)
+- DB_ENGINE=sqlite
+- TODO_DB_DIR=./app/shared
+- TODO_DB_FILENAME=todos.db
+
+2) MySQL (requires aiomysql)
+- DB_ENGINE=mysql
+- DB_HOST=localhost
+- DB_PORT=3306
+- DB_USER=root
+- DB_PASSWORD=secret
+- DB_NAME=todos
+# Or provide a full URL
+# DATABASE_URL=mysql+aiomysql://root:secret@localhost:3306/todos
+
+3) PostgreSQL (requires asyncpg)
+- DB_ENGINE=postgresql
+- DB_HOST=localhost
+- DB_PORT=5432
+- DB_USER=postgres
+- DB_PASSWORD=secret
+- DB_NAME=todos
+# Or provide a full URL
+# DATABASE_URL=postgresql+asyncpg://postgres:secret@localhost:5432/todos
+
+Notes:
+- If you choose MySQL or PostgreSQL, ensure the appropriate async driver is installed: aiomysql or asyncpg.
+- On startup, the application creates tables via SQLAlchemy Base.metadata.create_all for the selected backend.
+- The auth token bootstrap now uses an async path that works across backends.
