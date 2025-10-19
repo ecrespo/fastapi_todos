@@ -22,6 +22,26 @@ class TodoRepository:
                 for row in rows
             ]
 
+    async def get_paginated(self, offset: int, limit: int) -> tuple[List[Todo], int]:
+        """Return a page slice and the total count."""
+        async with await get_async_session() as session:
+            # Total count first
+            res_total = await session.execute(text("SELECT COUNT(*) FROM todos"))
+            total = int(res_total.scalar() or 0)
+            if total == 0:
+                return [], 0
+            # Page slice
+            res = await session.execute(
+                text("SELECT id, item, status, created_at FROM todos ORDER BY id ASC LIMIT :limit OFFSET :offset"),
+                {"limit": limit, "offset": offset},
+            )
+            rows = res.fetchall()
+            items = [
+                Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]))
+                for row in rows
+            ]
+            return items, total
+
     async def get_by_id(self, todo_id: int) -> Optional[Todo]:
         async with await get_async_session() as session:
             res = await session.execute(

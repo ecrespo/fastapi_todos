@@ -1,4 +1,4 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Tuple
 import inspect
 
 from app.models.RequestsTodos import Todo  # type: ignore
@@ -21,8 +21,21 @@ class TodoService:
     def __init__(self, repository: Optional[TodoRepository] = None) -> None:
         self._repo = repository or TodoRepository()
 
-    async def get_todos(self) -> List[Todo]:
-        return await _maybe_await(self._repo.get_all())
+    async def get_todos(self, page: int, size: int) -> Tuple[List[Todo], int]:
+        """
+        Returns a slice of todos and the total count.
+        Falls back to the legacy get_all() repository method if a paginated
+        method is not implemented by the repository (used by some unit tests).
+        """
+        offset = max(0, (page - 1) * size)
+        # Prefer repo pagination if available
+        get_paginated = getattr(self._repo, "get_paginated", None)
+        if get_paginated is not None:
+            return await _maybe_await(get_paginated(offset, size))
+        # Fallback: load all then slice
+        all_items: List[Todo] = await _maybe_await(self._repo.get_all())
+        total = len(all_items)
+        return all_items[offset: offset + size], total
 
     async def get_todo(self, todo_id: int) -> Optional[Todo]:
         return await _maybe_await(self._repo.get_by_id(todo_id))

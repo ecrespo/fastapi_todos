@@ -1,15 +1,16 @@
 from typing import Dict, List
 
-from fastapi import APIRouter, Security, Depends
+from fastapi import APIRouter, Security, Depends, Query
 from app.shared.rate_limiter import limiter
 from app.models.RequestsTodos import Todo
-from app.models.ResponseTodos import TodosBase, TodoResponse
+from app.models.ResponseTodos import TodosBase, TodoResponse, PaginatedTodos
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
 from app.services.todo_service import TodoService
 from redis import asyncio as aioredis
 from app.shared.redis_settings import get_redis_client
 import os
 import json
+import math
 from app.shared.auth import api_verifier
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -48,30 +49,41 @@ async def _cache_delete(redis_client: aioredis.Redis, *keys: str):
         pass
 
 
-@router.get("/", response_model=TodosBase)
+@router.get("/", response_model=PaginatedTodos)
 @limiter.limit("5/minute")
-async def get_todos(token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, List[Todo]]:
+async def get_todos(
+    page: int = Query(1, ge=1, description="Page number starting at 1"),
+    size: int = Query(10, ge=1, le=100, description="Page size (1-100)"),
+    token: str = Security(api_verifier),
+    redis_client: aioredis.Redis = Depends(get_redis_client),
+) -> Dict[str, List[Todo]]:
     """
-    Retrieve a list of todos.
+    Retrieve a paginated list of todos.
 
-    This endpoint fetches and returns all the todos available.
-
-    :return: A dictionary containing the todos.
-    :rtype: dict
+    Returns the requested page of todos and pagination metadata.
     """
+    cache_key = f"{KEY_ALL_TODOS}:{page}:{size}"
     # Try cache first
-    cached = await _cache_get_json(redis_client, KEY_ALL_TODOS)
-    if cached and isinstance(cached, dict) and "todos" in cached:
+    cached = await _cache_get_json(redis_client, cache_key)
+    if cached and isinstance(cached, dict) and "todos" in cached and "pagination" in cached:
         return cached
     # Fallback to service
-    todos = await service.get_todos()
+    items, total = await service.get_todos(page=page, size=size)
+    pages = math.ceil(total / size) if size > 0 else 0
+    payload = {
+        "todos": items,
+        "pagination": {"total": total, "page": page, "size": size, "pages": pages},
+    }
     # Cache normalized json-serializable shape
     try:
-        serializable = {"todos": [t.model_dump(mode="json") for t in todos]}
-        await _cache_set_json(redis_client, KEY_ALL_TODOS, serializable)
+        serializable = {
+            "todos": [t.model_dump(mode="json") for t in items],
+            "pagination": {"total": total, "page": page, "size": size, "pages": pages},
+        }
+        await _cache_set_json(redis_client, cache_key, serializable)
     except Exception:
         pass
-    return {"todos": todos}
+    return payload
 
 
 @router.get("/{todo_id}", response_model=None)
