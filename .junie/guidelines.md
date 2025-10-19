@@ -1,6 +1,6 @@
 Project Development Guidelines (FastAPI Todos)
 
-Audience: Senior Python/FastAPI engineers. This document captures project-specific, verified workflows and caveats to accelerate development and debugging.
+Audience: Senior Python/FastAPI engineers. This document captures project-specific, verified workflows and caveats to accelerate development and debugging. Updated to reflect the current repository state as of 2025-10-19 16:40 local time.
 
 1) Build and Configuration
 
@@ -13,21 +13,34 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
     - uv run <command>
 
 - Running the application locally
-  - Default dev run (auto-reload):
+  - Default dev run (auto-reload via run.py env var):
     - uv run python run.py
   - Uvicorn alternative:
     - uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   - Config via env (pydantic-settings; see app/shared/config.py). The loader resolves env files in this order:
     - .env.<APP_ENV> where APP_ENV in {develop, staging, qa, prod}
     - .env (fallback)
-  - Key envs:
+  - Key envs (core app behavior):
     - APP_ENV: defaults to develop. HTTPS redirect middleware only turns on when APP_ENV=prod.
     - TODO_DB_DIR: directory for the SQLite DB (defaults to settings module dir); created if missing.
     - TODO_DB_FILENAME: DB filename (default: todos.db). Set to :memory: for an in-memory SQLite database.
+    - AUTH_DEFAULT_TOKEN: set to fix the default token value created/ensured at startup; otherwise a token is generated and logged once.
+  - Database backend selection (current, see app/shared/db.py & README):
+    - DB_ENGINE: sqlite (default), mysql, or postgresql. Primarily for local/dev defaults.
+    - DATABASE_URL: full async DSN; if provided, it overrides granular parts.
+      Examples:
+      - sqlite+aiosqlite:// (memory)
+      - sqlite+aiosqlite:///./app/shared/todos.db (file)
+      - mysql+aiomysql://user:pass@localhost:3306/todos
+      - postgresql+asyncpg://user:pass@localhost:5432/todos
+    - If DATABASE_URL is not set, the following are used when DB_ENGINE is mysql/postgresql:
+      - DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+  - Redis (optional; used by /redis-check):
+    - REDIS_HOST (default localhost), REDIS_PORT (6379), REDIS_DB (0). See app/shared/redis_settings.py.
 
 - Auth token bootstrap at startup
-  - On startup, app/shared/db.ensure_auth_token ensures an active token row with name=auth_crud_todos.
-  - Provide AUTH_DEFAULT_TOKEN to fix the token value; otherwise a token is generated and logged at startup. Tests seed their own token; see below.
+  - On startup, app/shared/db.ensure_auth_token_async ensures an active token row with name=auth_crud_todos.
+  - Provide AUTH_DEFAULT_TOKEN to fix the token value; otherwise a token is generated and logged at startup (only when generated).
 
 - Middleware (operational implications)
   - TrustedHostMiddleware: allows all by default.
@@ -112,21 +125,25 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
 
 - Database layer
   - SQLite with SQLAlchemy Async engine and declarative models defined in app/shared/db.py. Schema is created via Base.metadata.create_all at startup (init_db_async in app.main lifespan) and in tests via init_db().
-  - DB_PATH is derived from Settings.db_path at import time; tests override app.shared.db.DB_PATH prior to connection creation. init_db() resets the async engine so re-pointing DB_PATH takes effect.
+  - DB connection URL is derived from Settings + DB_ENGINE/DATABASE_URL at import/runtime; tests override app.shared.db.DB_PATH prior to connection creation. init_db() resets the async engine so re-pointing DB_PATH takes effect.
   - If you need to re-point the DB at runtime, update the module-level DB_PATH before obtaining new connections.
   - Todo model fields include: id, item, created_at (server default CURRENT_TIMESTAMP), and status (Enum: start, in_process, pending, done, cancel; default pending).
-  - ensure_auth_token uses a sync sqlite3 connection for compatibility with test setup.
+  - ensure_auth_token/ensure_auth_token_async use sqlite3/async engine to ensure compatibility with test setup.
+  - For PostgreSQL bootstrap in containers, see sql/init_postgres.sql (idempotent type/table creation for enums and tables).
 
 - Migrations (Alembic)
-  - Alembic is configured (alembic.ini, alembic/env.py). The app does not run Alembic on startup; it uses SQLAlchemy create_all for schema.
+  - Alembic is configured (alembic.ini, alembic/env.py). The app does not run Alembic on startup; it uses SQLAlchemy create_all for schema by default.
   - Upgrade to the latest migration:
     - uv run alembic upgrade head
   - Create a new migration with autogenerate (ensure models are up-to-date and set DATABASE_URL or rely on alembic.ini):
     - uv run alembic revision --autogenerate -m "your message"
+  - Recent migrations present (2025-10-19):
+    - 20251019_000001_init.py
+    - 20251019_000002_add_todo_created_at_status.py
 
 - Service and repository abstraction
   - app/services/todo_service.py encapsulates domain logic.
-  - app/repositories/todo_repository.py implements persistence against SQLite.
+  - app/repositories/todo_repository.py implements persistence against the configured DB (SQLite by default).
   - app/api/v1/todos.py consumes a module-level TodoService instance (service). Tests can monkeypatch this symbol for isolation.
 
 - Logging and diagnostics

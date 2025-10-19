@@ -2,6 +2,9 @@
 
 A minimal FastAPI application that exposes a simple CRUD API for todos with token-based authentication, rate limiting, logging, and a small SQLite-backed data layer. Includes pytest-based tests and Docker support with uv as the package/dependency manager.
 
+## Documentation
+- Changelog: [CHANGELOG.md](./CHANGELOG.md)
+- Project Development Guidelines: [.junie/guidelines.md](./.junie/guidelines.md)
 
 ## Overview
 - REST API built with FastAPI
@@ -25,7 +28,7 @@ Authentication for /api/v1/todos requires an Authorization: Bearer <token> heade
 - Frameworks/libraries: FastAPI, Starlette, Pydantic, slowapi, Rich, Uvicorn, SQLAlchemy (async), aiosqlite, Alembic, secure
 - Package/dependency manager: uv (pyproject.toml + uv.lock)
 - Testing: pytest + fastapi.testclient
-- Data: SQLite
+- Data: SQLite, PostgreSQL, MySQL
 - Container: Docker (two-stage build)
 
 
@@ -71,7 +74,7 @@ Core env vars (app behavior):
 - TODO_DB_DIR: directory for the SQLite DB file. Defaults to the settings module directory and will be created if missing.
 - TODO_DB_FILENAME: DB filename; defaults to todos.db. Can be set to :memory: for an in-memory DB.
 - AUTH_DEFAULT_TOKEN: when set, the app ensures an active token row with name=auth_crud_todos using this value; otherwise, a token is generated and logged at startup.
-- RATE_LIMIT_EXEMPT_IPS: comma-separated IPs that bypass rate limiting (e.g., "127.0.0.1,192.168.1.10").
+- TODO: Document any rate limiting exemption configuration if/when implemented.
 
 Database configuration (runtime):
 - DB_ENGINE: database backend (sqlite|mysql|postgresql). Defaults to sqlite for local dev/tests.
@@ -82,6 +85,9 @@ Database configuration (runtime):
   - MySQL:         mysql+aiomysql://user:password@localhost:3306/todos
   - PostgreSQL:    postgresql+asyncpg://user:password@localhost:5432/todos
 - DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME: used when DATABASE_URL is not set. Note: default DB_PORT varies by engine (3306 for MySQL, 5432 for PostgreSQL).
+
+Redis (optional; used by /redis-check):
+- REDIS_HOST (default localhost), REDIS_PORT (default 6379), REDIS_DB (default 0). See app/shared/redis_settings.py.
 
 Runtime/process vars (used by run.py):
 - HOST, PORT, WORKERS, RELOAD as described above.
@@ -96,11 +102,12 @@ CORS is permissive by default; GZip is enabled; rate limiting is available via @
 - docker-compose up --build
 
 Notes:
-- The compose file maps host 9000 to container 9000, while run.py defaults to 8000. The Dockerfile runs: `uv run --env-file .env python3 run.py`. Ensure your .env sets `PORT=9000` to match the compose mapping.
-- The compose mounts ./logs and ./app into the container for live code changes and log persistence.
+- docker-compose maps host 8000 to container 8000. The image runs `uv run --env-file .env python3 run.py` and run.py defaults to PORT=8000, so no extra PORT override is required. If you change PORT in .env, update the compose ports accordingly.
+- Volumes: ./logs and ./app are mounted for live code changes and log persistence. The .env file is mounted read-only.
+- Services: compose also provisions Redis and PostgreSQL for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
 
 TODO:
-- Provide a sample .env (e.g., .env.example) documenting recommended defaults, including PORT=9000 for Docker.
+- Provide a sample .env (e.g., .env.example) documenting recommended defaults (APP_ENV, DB_ENGINE/DATABASE_URL, AUTH_DEFAULT_TOKEN, Redis/Postgres settings, etc.).
 
 
 ## Database and migrations
@@ -142,7 +149,7 @@ Testing notes:
 - run.py: convenience launcher wrapping uvicorn with env-var controls.
 - pyproject.toml: metadata and dependencies; requires Python >=3.13.
 - Dockerfile: two-stage image using uv for dependency management.
-- docker-compose.yaml: local development; exposes 9000:9000 and mounts code/log volumes.
+- docker-compose.yaml: local development; exposes 8000:8000 and mounts code/log volumes.
 - tests/: pytest suite using fastapi.testclient.
 
 
@@ -159,6 +166,41 @@ Testing notes:
   - run.py main() → starts Uvicorn and serves app.main:app
   - app.main:app → importable ASGI app for uvicorn/gunicorn
 
+
+## Makefile
+The repository includes a Makefile to streamline common developer tasks. Run `make help` to list available targets.
+
+Key targets:
+- help: Show available targets and descriptions
+- install: Install project dependencies using uv (frozen from uv.lock)
+- run: Run the FastAPI app locally via run.py (uv run python run.py)
+- up: Start services with docker compose (foreground, rebuild)
+- up-d: Start services with docker compose (detached, rebuild)
+- down: Stop services and remove containers
+- logs: Follow docker compose logs
+- restart: Restart services (down + up -d)
+- test: Run all tests (pytest -q)
+- test-file: Run tests for a specific file; usage: make test-file FILE=tests/test_todos_unit.py
+- test-node: Run a single test node; usage: make test-node NODE=tests/test_todos_unit.py::test_create_todo
+- lint: Run ruff static analysis over app, tests, run.py
+- imports: Validate import order only (ruff isort rules)
+- naming: Validate naming conventions only (pep8-naming)
+- format: Format code with ruff and fix import order
+- types: Run static type checks with mypy
+- security: Audit installed dependencies with pip-audit
+- check: Run lint, types, tests, and security in sequence
+
+Examples:
+- make help
+- make install
+- make run
+- make test
+- make test-file FILE=tests/test_todos_unit.py
+- make test-node NODE=tests/test_todos_unit.py::test_create_todo
+- make lint
+- make format
+- make types
+- make check
 
 ## License
 This project is licensed under the GNU General Public License v3.0 (GPL-3.0). See LICENSE for details.
@@ -198,7 +240,7 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
     - TODO_DB_FILENAME: DB filename (default: todos.db). Set to :memory: for an in-memory SQLite database.
 
 - Auth token bootstrap at startup
-  - On startup, app/shared/db.ensure_auth_token ensures an active token row with name=auth_crud_todos.
+  - On startup, app/shared/db.ensure_auth_token_async ensures an active token row with name=auth_crud_todos.
   - Provide AUTH_DEFAULT_TOKEN to fix the token value; otherwise a token is generated and logged at startup. Tests seed their own token; see below.
 
 - Middleware (operational implications)
@@ -250,7 +292,12 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
 
         resp_get = client.get("/api/v1/todos/42")
         assert resp_get.status_code == 200
-        assert resp_get.json() == {"todo": {"id": 42, "item": "demo-item"}}
+        data = resp_get.json()
+        assert "todo" in data
+        assert data["todo"]["id"] == 42
+        assert data["todo"]["item"] == "demo-item"
+        assert "status" in data["todo"]
+        assert "created_at" in data["todo"]
 
 - Adding a unit-style test without DB side-effects
   - Monkeypatch the module-level service used by the router to a fake service. See tests/test_todos_unit.py for the pattern:
@@ -275,8 +322,12 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
   - All /api/v1/todos endpoints require a Bearer token that exists and is active in auth_tokens (see app/shared/auth.py). The shared test fixture inserts 'test-token' and preconfigures Authorization headers on the TestClient.
 
 - Database layer
-  - SQLite with minimal schema managed in app/shared/db.py. DB_PATH is derived from Settings.db_path at import time; tests override app.shared.db.DB_PATH prior to connection creation and then call init_db().
+  - SQLite with SQLAlchemy Async engine and declarative models defined in app/shared/db.py. Schema is created via Base.metadata.create_all at startup (init_db_async in app.main lifespan) and in tests via init_db().
+  - DB connection URL is derived from Settings + DB_ENGINE/DATABASE_URL at import/runtime; tests override app.shared.db.DB_PATH prior to connection creation. init_db() resets the async engine so re-pointing DB_PATH takes effect.
   - If you need to re-point the DB at runtime, update the module-level DB_PATH before obtaining new connections.
+  - Todo model fields include: id, item, created_at (server default CURRENT_TIMESTAMP), and status (Enum: start, in_process, pending, done, cancel; default pending).
+  - ensure_auth_token/ensure_auth_token_async use sqlite3/async engine to ensure compatibility with test setup.
+  - For PostgreSQL bootstrap in containers, see sql/init_postgres.sql (idempotent type/table creation for enums and tables).
 
 - Service and repository abstraction
   - app/services/todo_service.py encapsulates domain logic.

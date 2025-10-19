@@ -2,9 +2,13 @@
 
 All notable changes to this project are documented here. This changelog captures the most recent commit history at the time of generation.
 
-Generated: 2025-10-19 14:25 (local time)
+Generated: 2025-10-19 16:47 (local time)
 
 ## 2025-10-19
+- e1716ae — Add PostgreSQL support and refactor authentication to use async ORM (Ernesto Crespo)
+- 26c3fe7 — Add Redis caching support for Todos APIs (Ernesto Crespo)
+- 385f202 — Refactor Docker setup and update `.dockerignore` (Ernesto Crespo)
+- e0740f7 — Add `.env.example` for environment variable configuration (Ernesto Crespo)
 - 4a9895c — Add support for dotenv preload and additional async database drivers (Ernesto Crespo)
 - b891026 — Add support for multiple database backends (SQLite, MySQL, PostgreSQL) (Ernesto Crespo)
 - docs — Update project-specific development guidelines in README.md (Ernesto Crespo)
