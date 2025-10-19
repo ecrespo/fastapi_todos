@@ -20,3 +20,7 @@ class PaginatedTodos(BaseModel):
 
 class TodoResponse(BaseModel):
     todo: Todo
+
+
+class MessageResponse(BaseModel):
+    message: str

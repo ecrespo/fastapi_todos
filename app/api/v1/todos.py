@@ -1,55 +1,30 @@
 from typing import Dict, List
 
-from fastapi import APIRouter, Security, Depends, Query
+from fastapi import APIRouter, Security, Depends, Query, status, HTTPException
+
 from app.shared.rate_limiter import limiter
 from app.models.RequestsTodos import Todo
-from app.models.ResponseTodos import TodosBase, TodoResponse, PaginatedTodos
+from app.models.ResponseTodos import PaginatedTodos, TodoResponse, MessageResponse
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
 from app.services.todo_service import TodoService
 from redis import asyncio as aioredis
 from app.shared.redis_settings import get_redis_client
-import os
-import json
 import math
 from app.shared.auth import api_verifier
+from app.shared.cache_redis import _todo_key, _cache_get_json, _cache_set_json, _cache_delete
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 service = TodoService()
 
-# Redis cache configuration
-CACHE_TTL = int(os.getenv("REDIS_TODOS_TTL", "60"))
 KEY_ALL_TODOS = "todos:all"
 
-def _todo_key(todo_id: int) -> str:
-    return f"todos:{todo_id}"
 
-
-async def _cache_get_json(redis_client: aioredis.Redis, key: str):
-    try:
-        value = await redis_client.get(key)
-        if value is None:
-            return None
-        return json.loads(value)
-    except Exception:
-        return None
-
-
-async def _cache_set_json(redis_client: aioredis.Redis, key: str, value, ex: int = CACHE_TTL):
-    try:
-        await redis_client.set(key, json.dumps(value), ex=ex)
-    except Exception:
-        pass
-
-
-async def _cache_delete(redis_client: aioredis.Redis, *keys: str):
-    try:
-        if keys:
-            await redis_client.delete(*keys)
-    except Exception:
-        pass
-
-
-@router.get("/", response_model=PaginatedTodos)
+@router.get(
+    "/",
+    response_model=PaginatedTodos,
+    status_code=status.HTTP_200_OK,
+    summary="Retrieve a paginated list of todos."
+)
 @limiter.limit("5/minute")
 async def get_todos(
     page: int = Query(1, ge=1, description="Page number starting at 1"),
@@ -81,12 +56,17 @@ async def get_todos(
             "pagination": {"total": total, "page": page, "size": size, "pages": pages},
         }
         await _cache_set_json(redis_client, cache_key, serializable)
-    except Exception:
-        pass
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
     return payload
 
 
-@router.get("/{todo_id}", response_model=None)
+@router.get(
+    "/{todo_id}",
+    response_model=TodoResponse | MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Retrieve a specific to-do item by its ID."
+)
 @limiter.limit("5/minute")
 async def get_todo(todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
     """
@@ -111,14 +91,19 @@ async def get_todo(todo_id: int, token: str = Security(api_verifier), redis_clie
     if todo is not None:
         try:
             await _cache_set_json(redis_client, key, todo.model_dump(mode="json"))
-        except Exception:
-            pass
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
         return {"todo": todo}
 
     return {"message": NOTFOUND}
 
 
-@router.post("/", response_model=None)
+@router.post(
+    "/",
+    response_model=MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new todo item."
+)
 @limiter.limit("5/minute")
 async def create_todo(todo: Todo, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
     """
@@ -133,7 +118,12 @@ async def create_todo(todo: Todo, token: str = Security(api_verifier), redis_cli
     return {"message": CREATED}
 
 
-@router.put("/{todo_id}", response_model=None)
+@router.put(
+    "/{todo_id}",
+    response_model=TodoResponse | MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update an existing todo item by its ID."
+)
 @limiter.limit("5/minute")
 async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
     """
@@ -156,15 +146,20 @@ async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_ve
         # Update the per-id cache and invalidate the list cache
         try:
             await _cache_set_json(redis_client, _todo_key(todo_id), updated.model_dump(mode="json"))
-        except Exception:
-            pass
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
         await _cache_delete(redis_client, KEY_ALL_TODOS)
         return {"todo": updated}
     return {"message": NOTFOUND}
 
 
 
-@router.delete("/{todo_id}", response_model=None)
+@router.delete(
+    "/{todo_id}",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete a specific todo item by its ID."
+)
 @limiter.limit("5/minute")
 async def delete_todo(todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
     """
