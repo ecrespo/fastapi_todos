@@ -1,57 +1,60 @@
 from typing import List, Optional
-import sqlite3
-from app.models.RequestsTodos import Todo # type: ignore
-from app.shared.db import get_connection
+
+from app.models.RequestsTodos import Todo  # type: ignore
+from app.shared.db import get_async_connection
 
 
 class TodoRepository:
-    """Repository layer for CRUD operations on todos using SQLite3."""
+    """Repository layer for CRUD operations on todos using aiosqlite."""
 
-    def get_all(self) -> List[Todo]:
-        conn = get_connection()
+    async def get_all(self) -> List[Todo]:
+        conn = await get_async_connection()
         try:
-            rows = conn.execute("SELECT id, item FROM todos ORDER BY id ASC").fetchall()
-            return [Todo(id=row[0], item=row[1]) for row in rows]
+            async with conn.execute("SELECT id, item FROM todos ORDER BY id ASC") as cur:
+                rows = await cur.fetchall()
+                return [Todo(id=row[0], item=row[1]) for row in rows]
         finally:
-            conn.close()
+            await conn.close()
 
-    def get_by_id(self, todo_id: int) -> Optional[Todo]:
-        conn = get_connection()
+    async def get_by_id(self, todo_id: int) -> Optional[Todo]:
+        conn = await get_async_connection()
         try:
-            row = conn.execute("SELECT id, item FROM todos WHERE id = ?", (todo_id,)).fetchone()
+            async with conn.execute("SELECT id, item FROM todos WHERE id = ?", (todo_id,)) as cur:
+                row = await cur.fetchone()
             if row is None:
                 return None
             return Todo(id=row[0], item=row[1])
         finally:
-            conn.close()
+            await conn.close()
 
-    def create(self, todo: Todo) -> None:
-        conn = get_connection()
+    async def create(self, todo: Todo) -> None:
+        conn = await get_async_connection()
         try:
-            conn.execute("INSERT INTO todos (id, item) VALUES (?, ?)", (todo.id, todo.item))
-            conn.commit()
+            await conn.execute("INSERT INTO todos (id, item) VALUES (?, ?)", (todo.id, todo.item))
+            await conn.commit()
         finally:
-            conn.close()
+            await conn.close()
 
-    def update(self, todo_id: int, item: str) -> Optional[Todo]:
-        conn = get_connection()
+    async def update(self, todo_id: int, item: str) -> Optional[Todo]:
+        conn = await get_async_connection()
         try:
-            cur = conn.execute("UPDATE todos SET item = ? WHERE id = ?", (item, todo_id))
-            conn.commit()
+            cur = await conn.execute("UPDATE todos SET item = ? WHERE id = ?", (item, todo_id))
+            await conn.commit()
             if cur.rowcount == 0:
                 return None
-            row = conn.execute("SELECT id, item FROM todos WHERE id = ?", (todo_id,)).fetchone()
+            async with conn.execute("SELECT id, item FROM todos WHERE id = ?", (todo_id,)) as cur2:
+                row = await cur2.fetchone()
             if row is None:
                 return None
             return Todo(id=row[0], item=row[1])
         finally:
-            conn.close()
+            await conn.close()
 
-    def delete(self, todo_id: int) -> bool:
-        conn = get_connection()
+    async def delete(self, todo_id: int) -> bool:
+        conn = await get_async_connection()
         try:
-            cur = conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
-            conn.commit()
+            cur = await conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+            await conn.commit()
             return cur.rowcount > 0
         finally:
-            conn.close()
+            await conn.close()

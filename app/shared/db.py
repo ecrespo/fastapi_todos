@@ -1,10 +1,14 @@
 import sqlite3
 from pathlib import Path
+from typing import Tuple
+
+import aiosqlite
+
 from app.shared.config import get_settings
 
 # Resolve DB path using settings and .env
 _settings = get_settings()
-DB_PATH: Path = _settings.db_path
+DB_PATH: Path | str = _settings.db_path
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS todos (
@@ -21,19 +25,28 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 """
 
 def get_connection() -> sqlite3.Connection:
-    """Create a new SQLite3 connection to the app database.
+    """Create a new synchronous SQLite3 connection to the app database.
 
-    Note: Caller is responsible for closing the connection.
+    Note: This is kept for backward compatibility (auth/tests). Prefer
+    the async helpers for new code paths.
     """
-    # Support in-memory database via ":memory:"
     conn = sqlite3.connect(str(DB_PATH))
-    # Return rows as tuples; repository will map them. Enable foreign keys if needed.
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
+async def get_async_connection() -> aiosqlite.Connection:
+    """Create a new aiosqlite connection to the app database.
+
+    Caller should not reuse across threads. Foreign keys are enabled.
+    """
+    conn = await aiosqlite.connect(str(DB_PATH))
+    await conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
+
+
 def init_db() -> None:
-    """Ensure database file and schema exist."""
+    """Ensure database file and schema exist (sync)."""
     conn = get_connection()
     try:
         conn.executescript(SCHEMA_SQL)
@@ -42,24 +55,31 @@ def init_db() -> None:
         conn.close()
 
 
-def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
-    """Ensure there is an active token row for the given name.
+async def init_db_async() -> None:
+    """Ensure database file and schema exist (async)."""
+    conn = await get_async_connection()
+    try:
+        await conn.executescript(SCHEMA_SQL)
+        await conn.commit()
+    finally:
+        await conn.close()
 
-    Returns a tuple (token_value, created_new) where created_new is True if we
-    inserted a new token, False if one already existed.
+
+def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
+    """Ensure there is an active token row for the given name (sync).
+
+    Returns (token_value, created_new).
     """
     import secrets
 
     conn = get_connection()
     try:
-        # Try to find an existing active token for this name
         row = conn.execute(
             "SELECT token FROM auth_tokens WHERE name = ? AND active = 1 LIMIT 1",
             (name,),
         ).fetchone()
         if row is not None:
             return row[0], False
-        # Create a new one
         token_value = token or secrets.token_urlsafe(32)
         conn.execute(
             "INSERT INTO auth_tokens (token, name, active) VALUES (?, ?, 1)",
@@ -69,3 +89,27 @@ def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
         return token_value, True
     finally:
         conn.close()
+
+
+async def ensure_auth_token_async(name: str, token: str | None = None) -> Tuple[str, bool]:
+    """Async variant of ensure_auth_token."""
+    import secrets
+
+    conn = await get_async_connection()
+    try:
+        async with conn.execute(
+            "SELECT token FROM auth_tokens WHERE name = ? AND active = 1 LIMIT 1",
+            (name,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is not None:
+            return row[0], False
+        token_value = token or secrets.token_urlsafe(32)
+        await conn.execute(
+            "INSERT INTO auth_tokens (token, name, active) VALUES (?, ?, 1)",
+            (token_value, name),
+        )
+        await conn.commit()
+        return token_value, True
+    finally:
+        await conn.close()

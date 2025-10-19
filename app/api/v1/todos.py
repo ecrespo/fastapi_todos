@@ -23,7 +23,7 @@ async def get_todos(token: str = Security(api_verifier)) -> Dict[str, List[Todo]
     :return: A dictionary containing the todos.
     :rtype: dict
     """
-    todos = service.get_todos()
+    todos = await service.get_todos()
     return {"todos": todos}
 
 
@@ -41,7 +41,7 @@ async def get_todo(todo_id: int,token: str = Security(api_verifier))-> Dict[str,
              a message indicating that no to-do item was found.
     :rtype: Dict[str, Union[Todo, str]]
     """
-    todo = service.get_todo(todo_id)
+    todo = await service.get_todo(todo_id)
     if todo is not None:
         return {"todo": todo}
 
@@ -57,7 +57,7 @@ async def create_todo(todo: Todo,token: str = Security(api_verifier))-> Dict[str
     :param todo: The Todo object containing the details of the todo item to be created.
     :return: A dictionary indicating the success message upon todo creation.
     """
-    service.create_todo(todo)
+    await service.create_todo(todo)
     return {"message": CREATED}
 
 
@@ -79,9 +79,9 @@ async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_ver
         or if no matching todo was found.
     :rtype: dict
     """
-    updated = service.update_todo(todo_id, todo_obj)
+    updated = await service.update_todo(todo_id, todo_obj)
     if updated is not None:
-        return {"todo": updated}
+        return {"todo": updated, "message": UPDATED}
     return {"message": NOTFOUND}
 
 
@@ -103,7 +103,7 @@ async def delete_todo(todo_id: int,token: str = Security(api_verifier)) -> Dict[
     :return: A message indicating the success or failure of the deletion operation
     :rtype: dict
     """
-    deleted = service.delete_todo(todo_id)
+    deleted = await service.delete_todo(todo_id)
     if deleted:
         return {"message": DELETED}
 
