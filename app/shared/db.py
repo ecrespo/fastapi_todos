@@ -88,12 +88,34 @@ class PostgresStrategy:
 
 
 def _get_strategy(settings: Settings, db_path: Path | str) -> DatabaseStrategy:
+    # If a full DATABASE_URL is provided, honor it and select strategy by scheme.
+    if settings.database_url:
+        url = settings.database_url.strip().lower()
+        if url.startswith("postgres"):
+            return PostgresStrategy(settings)
+        if url.startswith("mysql"):
+            return MySQLStrategy(settings)
+        # Fallback to sqlite for other/unspecified schemes
+        return SQLiteStrategy(settings, db_path)
+
     engine = (settings.db_engine or "sqlite").strip().lower()
+    # Always use sqlite when engine explicitly set to sqlite
+    if engine == "sqlite":
+        return SQLiteStrategy(settings, db_path)
+
+    # Test override: if DB_PATH has been changed at runtime (different from default) or set to ':memory:',
+    # treat it as a request to use a local sqlite file, regardless of env engine.
+    default_db_path = settings.db_path
+    dbp = str(db_path)
+    if dbp == ":memory:" or str(db_path) != str(default_db_path):
+        return SQLiteStrategy(settings, db_path)
+
+    # Otherwise, use the configured non-sqlite engine
     if engine == "mysql":
         return MySQLStrategy(settings)
     if engine in {"postgres", "postgresql"}:
         return PostgresStrategy(settings)
-    # default sqlite
+    # default sqlite as a final fallback
     return SQLiteStrategy(settings, db_path)
 
 

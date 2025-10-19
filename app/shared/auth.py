@@ -5,7 +5,8 @@ from typing import Optional
 from fastapi import HTTPException, Header, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.shared.db import get_connection
+from sqlalchemy import select
+from app.shared.db import get_async_session, AuthTokenORM
 
 def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     """Extract token from Authorization header.
@@ -50,7 +51,7 @@ class APIVerifier:
 _http_bearer_scheme = HTTPBearer(auto_error=False)
 
 class _APIVerifier(APIVerifier):
-    def __call__(self, credentials: HTTPAuthorizationCredentials = Security(_http_bearer_scheme)) -> str:  # type: ignore[override]
+    async def __call__(self, credentials: HTTPAuthorizationCredentials = Security(_http_bearer_scheme)) -> str:  # type: ignore[override]
         if credentials is None or not credentials.credentials:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -59,14 +60,15 @@ class _APIVerifier(APIVerifier):
             )
         token = credentials.credentials
 
-        conn = get_connection()
-        try:
-            row = conn.execute(
-                "SELECT token FROM auth_tokens WHERE token = ? AND active = 1",
-                (token,),
-            ).fetchone()
-        finally:
-            conn.close()
+        # Validate token against the configured database (SQLite, Postgres, etc.) using SQLAlchemy AsyncSession
+        async with (await get_async_session()) as session:
+            result = await session.execute(
+                select(AuthTokenORM.token).where(
+                    AuthTokenORM.token == token,
+                    AuthTokenORM.active == 1,
+                ).limit(1)
+            )
+            row = result.first()
 
         if row is None:
             raise HTTPException(
@@ -81,14 +83,14 @@ class _APIVerifier(APIVerifier):
 api_verifier = _APIVerifier()
 
 
-def require_auth(
+async def require_auth(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ) -> str:
-    """FastAPI dependency that validates a bearer token against the DB.
+    """FastAPI dependency that validates a bearer token against the DB (async).
 
     Extracts the token from the Authorization header and validates it against
-    the auth_tokens table. Returns the validated token string on success.
-    Raises 401 otherwise.
+    the auth_tokens table using SQLAlchemy AsyncSession. Returns the validated
+    token string on success. Raises 401 otherwise.
     """
     token = _extract_bearer_token(authorization)
 
@@ -99,14 +101,14 @@ def require_auth(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT token FROM auth_tokens WHERE token = ? AND active = 1",
-            (token,),
-        ).fetchone()
-    finally:
-        conn.close()
+    async with (await get_async_session()) as session:
+        result = await session.execute(
+            select(AuthTokenORM.token).where(
+                AuthTokenORM.token == token,
+                AuthTokenORM.active == 1,
+            ).limit(1)
+        )
+        row = result.first()
 
     if row is None:
         raise HTTPException(

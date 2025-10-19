@@ -19,6 +19,7 @@ services:
       - './.env:/app/.env:ro'
     depends_on:
       - redis
+      - postgres
     restart: always
 
   redis:
@@ -29,6 +30,34 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     restart: always
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=todos
+      - POSTGRES_USER=todos
+      - POSTGRES_PASSWORD=secret
+      - TZ=America/Caracas
+    # Do not expose Postgres on the host by default to avoid port conflicts.
+    # If you need host access from the host machine, set POSTGRES_HOST_PORT in .env
+    # and uncomment the ports block below (defaults to 55432 if not set).
+    ports:
+      - ${POSTGRES_HOST_PORT:-55432}:5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - api_todo_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
 networks:
   api_todo_network:
     driver: bridge
+
+volumes:
+  pgdata:
