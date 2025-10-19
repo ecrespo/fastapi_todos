@@ -340,3 +340,5 @@ cython_debug/
 .idea/
 .env
 app/shared/todos.db
+logs/
+logs/*.log

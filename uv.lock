@@ -153,6 +153,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
+    { name = "rich" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -167,6 +168,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "rich", specifier = ">=14.2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.38.0" },
 ]
 

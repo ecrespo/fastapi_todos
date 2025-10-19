@@ -4,10 +4,11 @@ from fastapi import APIRouter
 from app.models.RequestsTodos import Todo
 from app.models.ResponseTodos import TodosBase
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
-
+from app.services.todo_service import TodoService
 router = APIRouter(prefix="/todos", tags=["todos"])
 
-todos = []
+service = TodoService()
+
 
 @router.get("/", response_model=TodosBase)
 async def get_todos() -> Dict[str, List[Todo]]:
@@ -19,6 +20,7 @@ async def get_todos() -> Dict[str, List[Todo]]:
     :return: A dictionary containing the todos.
     :rtype: dict
     """
+    todos = service.get_todos()
     return {"todos": todos}
 
 
@@ -35,9 +37,9 @@ async def get_todo(todo_id: int)-> Dict[str, Todo|str]:
              a message indicating that no to-do item was found.
     :rtype: Dict[str, Union[Todo, str]]
     """
-    for todo in todos:
-        if todo.id == todo_id:
-            return {"todo": todo}
+    todo = service.get_todo(todo_id)
+    if todo is not None:
+        return {"todo": todo}
 
     return {"message": NOTFOUND}
 
@@ -50,7 +52,7 @@ async def create_todo(todo: Todo)-> Dict[str, str]:
     :param todo: The Todo object containing the details of the todo item to be created.
     :return: A dictionary indicating the success message upon todo creation.
     """
-    todos.append(todo)
+    service.create_todo(todo)
     return {"message": CREATED}
 
 
@@ -71,11 +73,9 @@ async def update_todo(todo_id: int, todo_obj: Todo)-> Dict[str, str]:
         or if no matching todo was found.
     :rtype: dict
     """
-    for todo in todos:
-        if todo.id == todo_id:
-            todo.title = todo_obj.title
-            todo.item = todo_obj.item
-            return {"message": UPDATED}
+    updated = service.update_todo(todo_id, todo_obj)
+    if updated is not None:
+        return {"todo": updated}
     return {"message": NOTFOUND}
 
 
@@ -96,9 +96,8 @@ async def delete_todo(todo_id: int) -> Dict[str, str]:
     :return: A message indicating the success or failure of the deletion operation
     :rtype: dict
     """
-    for todo in todos:
-        if todo.id == todo_id:
-            todos.remove(todo)
+    deleted = service.delete_todo(todo_id)
+    if deleted:
         return {"message": DELETED}
 
     return {"message": NOTFOUND}
