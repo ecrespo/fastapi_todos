@@ -7,6 +7,7 @@ from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
 
 
 class Environment(str, Enum):
@@ -80,8 +81,13 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     # Create a temporary settings to resolve env file, then instantiate again so env_file takes effect
     temp = Settings()
-    # If an env file is available based on temp.environment, re-instantiate so it is applied
+    # If an env file is available based on temp.environment, load it with python-dotenv and re-instantiate so env_file takes effect
     env_file = _resolve_env_file(temp.environment)
     if env_file:
+        # Preload environment for non-pydantic consumers as well
+        load_dotenv(dotenv_path=env_file, override=False, encoding="utf-8")
         return Settings(_env_file=env_file)
+    # Also try loading a generic .env if present (no override so OS env wins)
+    if Path(".env").exists():
+        load_dotenv(dotenv_path=".env", override=False, encoding="utf-8")
     return temp

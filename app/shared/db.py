@@ -38,11 +38,12 @@ class SQLiteStrategy:
 
     def build_async_url(self) -> str:
         # Support ':memory:' and file paths
+        dbp = str(self.db_path)
+        if dbp == ":memory:":
+            return "sqlite+aiosqlite://"
         if isinstance(self.db_path, Path):
             return f"sqlite+aiosqlite:///{self.db_path}"
-        if str(self.db_path) == ":memory:":
-            return "sqlite+aiosqlite://"
-        return f"sqlite+aiosqlite:///{self.db_path}"
+        return f"sqlite+aiosqlite:///{dbp}"
 
     def name(self) -> str:
         return "sqlite"
