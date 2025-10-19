@@ -9,12 +9,14 @@ services:
       - TZ=America/Caracas
     container_name: api_todo
     ports:
-      - 9000:9000
+      - 8000:8000
     networks:
       - api_todo_network
     volumes:
       - './logs:/app/logs'
-      - './app:/app/'
+      # Mount only the application source inside /app/app to avoid shadowing run.py and the virtualenv
+      - './app:/app/app'
+      - './.env:/app/.env:ro'
 
     restart: always
 
