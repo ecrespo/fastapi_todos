@@ -12,7 +12,7 @@ from secure import Secure
 from app.shared.rate_limiter import setup_rate_limiter, limiter
 from app.api.v1.todos import router as todo_router
 from app.shared.config import get_settings, Environment
-from app.shared.db import init_db, ensure_auth_token, close_async_connection
+from app.shared.db import init_db_async, ensure_auth_token, close_async_connection
 from app.shared.LoggerSingleton import logger
 from app.middlewares import (
     ErrorHandlingMiddleware,
@@ -28,7 +28,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     # Initialize DB on startup (uses settings internally)
     logger.info("Initializing database...")
-    init_db()
+    await init_db_async()
     # Ensure a default auth token exists for CRUD of todos
     env_token = os.getenv("AUTH_DEFAULT_TOKEN")
     token_value, created = ensure_auth_token(name="auth_crud_todos", token=env_token)
@@ -77,7 +77,22 @@ secure = Secure.with_default_headers()
 @app.middleware("http")
 async def set_secure_headers(request, call_next):
     response = await call_next(request)
+    # Apply recommended security headers
     await secure.set_headers_async(response)
+    # Relax Content-Security-Policy to allow FastAPI docs (Swagger UI and ReDoc) assets
+    # These pages load scripts and styles from trusted CDNs and use small inline scripts.
+    csp = (
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "img-src 'self' data: https://cdn.jsdelivr.net; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.redoc.ly; "
+        "connect-src 'self'; "
+        "frame-ancestors 'self'; "
+        "form-action 'self'"
+    )
+    response.headers["Content-Security-Policy"] = csp
     return response
 
 

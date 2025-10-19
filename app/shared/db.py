@@ -1,8 +1,20 @@
-import sqlite3
-from pathlib import Path
-from typing import Tuple, Optional
+from __future__ import annotations
 
-import aiosqlite
+import sqlite3
+from enum import Enum
+from pathlib import Path
+from typing import Optional, Tuple
+
+from sqlalchemy import (
+    Enum as SAEnum,
+    String,
+    Integer,
+    DateTime,
+    Text,
+    text,
+)
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from app.shared.config import get_settings
 
@@ -10,78 +22,121 @@ from app.shared.config import get_settings
 _settings = get_settings()
 DB_PATH: Path | str = _settings.db_path
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS todos (
-    id INTEGER PRIMARY KEY,
-    item TEXT NOT NULL
-);
 
-CREATE TABLE IF NOT EXISTS auth_tokens (
-    token TEXT PRIMARY KEY,
-    name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    active INTEGER NOT NULL DEFAULT 1
-);
-"""
+def _build_database_url(db_path: Path | str) -> str:
+    # Support ':memory:' and file paths
+    if isinstance(db_path, Path):
+        return f"sqlite+aiosqlite:///{db_path}"
+    if str(db_path) == ":memory:":
+        return "sqlite+aiosqlite://"
+    # Any other string assume file path
+    return f"sqlite+aiosqlite:///{db_path}"
 
-# Async connection singleton holder
-_ASYNC_CONN: Optional[aiosqlite.Connection] = None
+DATABASE_URL: str = _build_database_url(DB_PATH)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class TodoStatus(str, Enum):
+    start = "start"
+    in_process = "in_process"
+    pending = "pending"
+    done = "done"
+    cancel = "cancel"
+
+
+class TodoORM(Base):
+    __tablename__ = "todos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[Optional[str]] = mapped_column(
+        DateTime,
+        server_default=text("'2025-10-19 00:00:00'"),
+        nullable=False,
+    )
+    status: Mapped[TodoStatus] = mapped_column(SAEnum(TodoStatus, name="todo_status"), nullable=False, server_default=text("'pending'"))
+
+
+class AuthTokenORM(Base):
+    __tablename__ = "auth_tokens"
+
+    token: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[Optional[str]] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    active: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+# Async SQLAlchemy engine/session
+_engine: Optional[AsyncEngine] = None
+_SessionFactory: Optional[sessionmaker] = None
+
+
+def _ensure_engine() -> tuple[AsyncEngine, sessionmaker]:
+    global _engine, _SessionFactory
+    if _engine is None:
+        # Build URL from the current DB_PATH instead of the module-time constant to honor test overrides
+        db_url = _build_database_url(DB_PATH)
+        _engine = create_async_engine(db_url, future=True)
+        _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False, class_=AsyncSession)
+    assert _SessionFactory is not None
+    return _engine, _SessionFactory
+
+
+async def get_async_session() -> AsyncSession:
+    _, factory = _ensure_engine()
+    return factory()
 
 
 def get_connection() -> sqlite3.Connection:
-    """Create a new synchronous SQLite3 connection to the app database.
-
-    Note: This is kept for backward compatibility (auth/tests). Prefer
-    the async helpers for new code paths.
-    """
+    """Backward-compatible sync sqlite3 connection for tests/auth seeding."""
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
-async def get_async_connection() -> aiosqlite.Connection:
-    """Return a singleton aiosqlite connection to the app database.
-
-    The same connection instance is reused across calls within the process.
-    Foreign keys are enabled on first initialization.
-    """
-    global _ASYNC_CONN
-    if _ASYNC_CONN is None:
-        _ASYNC_CONN = await aiosqlite.connect(str(DB_PATH))
-        await _ASYNC_CONN.execute("PRAGMA foreign_keys = ON;")
-    return _ASYNC_CONN
-
-
 def init_db() -> None:
-    """Ensure database file and schema exist (sync)."""
-    conn = get_connection()
-    try:
-        conn.executescript(SCHEMA_SQL)
-        conn.commit()
-    finally:
-        conn.close()
+    """Create tables if they do not exist using SQLAlchemy metadata (sync entrypoint).
+
+    Note: SQLAlchemy async engine is used under the hood via run_sync.
+    Also resets the async engine to honor any runtime changes to DB_PATH (used in tests).
+    """
+    import asyncio
+    global _engine, _SessionFactory
+    # Reset engine/session so that re-pointing DB_PATH takes effect
+    _engine = None
+    _SessionFactory = None
+
+    async def _create_all() -> None:
+        engine, _ = _ensure_engine()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(_create_all())
 
 
 async def init_db_async() -> None:
-    """Ensure database file and schema exist (async)."""
-    conn = await get_async_connection()
-    await conn.executescript(SCHEMA_SQL)
-    await conn.commit()
+    engine, _ = _ensure_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def close_async_connection() -> None:
-    """Close the singleton async connection if it exists."""
-    global _ASYNC_CONN
-    if _ASYNC_CONN is not None:
+    """Dispose the async engine if created."""
+    global _engine
+    if _engine is not None:
         try:
-            await _ASYNC_CONN.close()
+            await _engine.dispose()
         finally:
-            _ASYNC_CONN = None
+            _engine = None
 
 
 def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
     """Ensure there is an active token row for the given name (sync).
 
+    Uses sqlite3 for compatibility with existing tests which seed/read tokens synchronously.
     Returns (token_value, created_new).
     """
     import secrets
@@ -106,21 +161,20 @@ def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
 
 
 async def ensure_auth_token_async(name: str, token: str | None = None) -> Tuple[str, bool]:
-    """Async variant of ensure_auth_token using the singleton connection."""
+    """Async variant implemented with AsyncSession/SQLAlchemy."""
     import secrets
 
-    conn = await get_async_connection()
-    async with conn.execute(
-        "SELECT token FROM auth_tokens WHERE name = ? AND active = 1 LIMIT 1",
-        (name,),
-    ) as cur:
-        row = await cur.fetchone()
-    if row is not None:
-        return row[0], False
-    token_value = token or secrets.token_urlsafe(32)
-    await conn.execute(
-        "INSERT INTO auth_tokens (token, name, active) VALUES (?, ?, 1)",
-        (token_value, name),
-    )
-    await conn.commit()
-    return token_value, True
+    _, factory = _ensure_engine()
+    async with factory() as session:
+        # Check existing
+        res = await session.execute(text("SELECT token FROM auth_tokens WHERE name = :name AND active = 1 LIMIT 1"), {"name": name})
+        row = res.first()
+        if row is not None:
+            return row[0], False
+        token_value = token or secrets.token_urlsafe(32)
+        await session.execute(
+            text("INSERT INTO auth_tokens (token, name, active) VALUES (:token, :name, 1)"),
+            {"token": token_value, "name": name},
+        )
+        await session.commit()
+        return token_value, True
