@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     db_password: str | None = Field(default=None, alias="DB_PASSWORD")
     db_name: str | None = Field(default=None, alias="DB_NAME")
 
+    # Redis configuration (optional; dedicated RedisSettings is also provided)
+    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_db: int = Field(default=0, alias="REDIS_DB")
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         case_sensitive=False,

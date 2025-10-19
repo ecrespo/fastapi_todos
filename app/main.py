@@ -1,7 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -16,9 +16,11 @@ from app.shared.db import init_db_async, ensure_auth_token_async, close_async_co
 from app.shared.LoggerSingleton import logger
 from app.middlewares import (
     ErrorHandlingMiddleware,
-LoggingMiddleware,
-ProcessTimeHeaderMiddleware
+    LoggingMiddleware,
+    ProcessTimeHeaderMiddleware,
 )
+from redis import asyncio as aioredis
+from app.shared.redis_settings import get_redis_client
 
 
 settings = get_settings()
@@ -108,5 +110,15 @@ async def health_check():
         dict: A dictionary containing the current operational status.
     """
     return {"status": "ok"}
+
+
+
+@app.get("/redis-check")
+async def test_redis(redis_client: aioredis.Redis = Depends(get_redis_client)):
+    # Set a value with a 60-second expiration
+    await redis_client.set("my_key", "hello", ex=60)
+    # Get the value back
+    value = await redis_client.get("my_key")
+    return {"my_key": value}
 
 app.include_router(todo_router, prefix="/api/v1")

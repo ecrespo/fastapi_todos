@@ -17,10 +17,17 @@ services:
       # Mount only the application source inside /app/app to avoid shadowing run.py and the virtualenv
       - './app:/app/app'
       - './.env:/app/.env:ro'
-
+    depends_on:
+      - redis
     restart: always
 
-
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks:
+      - api_todo_network
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: always
 
 networks:
   api_todo_network:

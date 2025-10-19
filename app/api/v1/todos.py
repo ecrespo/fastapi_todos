@@ -1,20 +1,56 @@
 from typing import Dict, List
 
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, Security, Depends
 from app.shared.rate_limiter import limiter
 from app.models.RequestsTodos import Todo
 from app.models.ResponseTodos import TodosBase, TodoResponse
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
 from app.services.todo_service import TodoService
+from redis import asyncio as aioredis
+from app.shared.redis_settings import get_redis_client
+import os
+import json
 from app.shared.auth import api_verifier
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 service = TodoService()
 
+# Redis cache configuration
+CACHE_TTL = int(os.getenv("REDIS_TODOS_TTL", "60"))
+KEY_ALL_TODOS = "todos:all"
+
+def _todo_key(todo_id: int) -> str:
+    return f"todos:{todo_id}"
+
+
+async def _cache_get_json(redis_client: aioredis.Redis, key: str):
+    try:
+        value = await redis_client.get(key)
+        if value is None:
+            return None
+        return json.loads(value)
+    except Exception:
+        return None
+
+
+async def _cache_set_json(redis_client: aioredis.Redis, key: str, value, ex: int = CACHE_TTL):
+    try:
+        await redis_client.set(key, json.dumps(value), ex=ex)
+    except Exception:
+        pass
+
+
+async def _cache_delete(redis_client: aioredis.Redis, *keys: str):
+    try:
+        if keys:
+            await redis_client.delete(*keys)
+    except Exception:
+        pass
+
 
 @router.get("/", response_model=TodosBase)
 @limiter.limit("5/minute")
-async def get_todos(token: str = Security(api_verifier)) -> Dict[str, List[Todo]]:
+async def get_todos(token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, List[Todo]]:
     """
     Retrieve a list of todos.
 
@@ -23,13 +59,24 @@ async def get_todos(token: str = Security(api_verifier)) -> Dict[str, List[Todo]
     :return: A dictionary containing the todos.
     :rtype: dict
     """
+    # Try cache first
+    cached = await _cache_get_json(redis_client, KEY_ALL_TODOS)
+    if cached and isinstance(cached, dict) and "todos" in cached:
+        return cached
+    # Fallback to service
     todos = await service.get_todos()
+    # Cache normalized json-serializable shape
+    try:
+        serializable = {"todos": [t.model_dump(mode="json") for t in todos]}
+        await _cache_set_json(redis_client, KEY_ALL_TODOS, serializable)
+    except Exception:
+        pass
     return {"todos": todos}
 
 
 @router.get("/{todo_id}", response_model=None)
 @limiter.limit("5/minute")
-async def get_todo(todo_id: int,token: str = Security(api_verifier))-> Dict[str, Todo|str]:
+async def get_todo(todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
     """
     Retrieves a specific to-do item by its ID. Searches through the
     list of to-do items and returns the item if found. If the item
@@ -41,8 +88,19 @@ async def get_todo(todo_id: int,token: str = Security(api_verifier))-> Dict[str,
              a message indicating that no to-do item was found.
     :rtype: Dict[str, Union[Todo, str]]
     """
+    # Try cache first
+    key = _todo_key(todo_id)
+    cached = await _cache_get_json(redis_client, key)
+    if cached is not None:
+        return {"todo": cached}
+
+    # Fallback to service
     todo = await service.get_todo(todo_id)
     if todo is not None:
+        try:
+            await _cache_set_json(redis_client, key, todo.model_dump(mode="json"))
+        except Exception:
+            pass
         return {"todo": todo}
 
     return {"message": NOTFOUND}
@@ -50,7 +108,7 @@ async def get_todo(todo_id: int,token: str = Security(api_verifier))-> Dict[str,
 
 @router.post("/", response_model=None)
 @limiter.limit("5/minute")
-async def create_todo(todo: Todo,token: str = Security(api_verifier))-> Dict[str, str]:
+async def create_todo(todo: Todo, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
     """
     Handles the creation of a new todo item and appends it to the existing list of todos.
 
@@ -58,12 +116,14 @@ async def create_todo(todo: Todo,token: str = Security(api_verifier))-> Dict[str
     :return: A dictionary indicating the success message upon todo creation.
     """
     await service.create_todo(todo)
+    # Invalidate caches
+    await _cache_delete(redis_client, KEY_ALL_TODOS, _todo_key(todo.id))
     return {"message": CREATED}
 
 
 @router.put("/{todo_id}", response_model=None)
 @limiter.limit("5/minute")
-async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_verifier))-> Dict[str, Todo | str]:
+async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
     """
     Updates an existing todo item identified by its ID. This function iterates
     through the list of todos to find a matching ID, then updates the title
@@ -81,6 +141,12 @@ async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_ver
     """
     updated = await service.update_todo(todo_id, todo_obj)
     if updated is not None:
+        # Update the per-id cache and invalidate the list cache
+        try:
+            await _cache_set_json(redis_client, _todo_key(todo_id), updated.model_dump(mode="json"))
+        except Exception:
+            pass
+        await _cache_delete(redis_client, KEY_ALL_TODOS)
         return {"todo": updated}
     return {"message": NOTFOUND}
 
@@ -88,7 +154,7 @@ async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_ver
 
 @router.delete("/{todo_id}", response_model=None)
 @limiter.limit("5/minute")
-async def delete_todo(todo_id: int,token: str = Security(api_verifier)) -> Dict[str, str]:
+async def delete_todo(todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
     """
     Deletes a specific todo item by its unique identifier.
 
@@ -105,6 +171,7 @@ async def delete_todo(todo_id: int,token: str = Security(api_verifier)) -> Dict[
     """
     deleted = await service.delete_todo(todo_id)
     if deleted:
+        await _cache_delete(redis_client, KEY_ALL_TODOS, _todo_key(todo_id))
         return {"message": DELETED}
 
     return {"message": NOTFOUND}

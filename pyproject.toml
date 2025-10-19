@@ -18,6 +18,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "uvicorn[standard]>=0.38.0",
     "secure>=0.3.0",
+    "redis>=5.0.0",
 ]
 
 [dependency-groups]
