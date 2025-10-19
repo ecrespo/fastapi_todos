@@ -339,3 +339,4 @@ cython_debug/
 
 .idea/
 .env
+app/shared/todos.db
