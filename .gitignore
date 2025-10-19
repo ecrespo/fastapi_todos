@@ -342,3 +342,5 @@ cython_debug/
 app/shared/todos.db
 logs/
 logs/*.log
+output.txt
+dist/

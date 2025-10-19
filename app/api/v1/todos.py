@@ -81,7 +81,7 @@ async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_ver
     """
     updated = await service.update_todo(todo_id, todo_obj)
     if updated is not None:
-        return {"todo": updated, "message": UPDATED}
+        return {"todo": updated}
     return {"message": NOTFOUND}
 
 

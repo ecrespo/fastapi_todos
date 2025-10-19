@@ -1,11 +1,12 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from secure import Secure
 
 
 from app.shared.rate_limiter import setup_rate_limiter, limiter
@@ -69,6 +70,14 @@ app.add_middleware(ProcessTimeHeaderMiddleware)
 # Error handling (outermost)
 app.add_middleware(ErrorHandlingMiddleware, logger=logger)
 
+# Secure headers (outermost)
+secure = Secure.with_default_headers()
+
+@app.middleware("http")
+async def set_secure_headers(request, call_next):
+    response = await call_next(request)
+    await secure.set_headers_async(response)
+    return response
 
 
 @app.get("/healthcheck")
