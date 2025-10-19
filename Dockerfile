@@ -33,8 +33,8 @@ WORKDIR /app
 # Copy uv for runtime
 COPY --from=uv /uv /bin/
 
-# Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
+# Copy virtual environment from builder with correct ownership for non-root user
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
 # Copy application code
 COPY --chown=appuser:appuser . .

@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_db: int = Field(default=0, alias="REDIS_DB")
 
+    # Celery configuration (RabbitMQ by default; tests may set eager mode)
+    celery_broker_url: str = Field(default="pyamqp://guest@localhost//", alias="CELERY_BROKER_URL")
+    celery_result_backend: str = Field(default="rpc://", alias="CELERY_RESULT_BACKEND")
+    celery_task_always_eager: bool = Field(default=False, alias="CELERY_TASK_ALWAYS_EAGER")
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         case_sensitive=False,

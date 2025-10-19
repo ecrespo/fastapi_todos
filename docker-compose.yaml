@@ -6,7 +6,9 @@ services:
     env_file:
       - .env
     environment:
-      - TZ=America/Caracas
+      - TZ=${TZ}
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
     container_name: api_todo
     ports:
       - 8000:8000
@@ -18,13 +20,59 @@ services:
       - './app:/app/app'
       - './.env:/app/.env:ro'
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: always
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ}
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
+    container_name: celery_worker
+    command: ["uv", "run", "celery", "-A", "app.shared.celery_app:celery_app", "worker", "--loglevel=INFO", "-Q", "celery"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - api_todo_network
+    restart: always
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - api_todo_network
     restart: always
 
   redis:
     image: redis:7-alpine
     container_name: redis
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ}
     networks:
       - api_todo_network
     command: ["redis-server", "--appendonly", "yes"]
@@ -33,11 +81,13 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: postgres
+    env_file:
+      - .env
     environment:
+      - TZ=${TZ}
       - POSTGRES_DB=todos
       - POSTGRES_USER=todos
       - POSTGRES_PASSWORD=secret
-      - TZ=America/Caracas
     # Do not expose Postgres on the host by default to avoid port conflicts.
     # If you need host access from the host machine, set POSTGRES_HOST_PORT in .env
     # and uncomment the ports block below (defaults to 55432 if not set).

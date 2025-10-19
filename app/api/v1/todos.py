@@ -4,7 +4,7 @@ from fastapi import APIRouter, Security, Depends, Query, status, HTTPException
 
 from app.shared.rate_limiter import limiter
 from app.models.RequestsTodos import Todo
-from app.models.ResponseTodos import PaginatedTodos, TodoResponse, MessageResponse
+from app.models.ResponseTodos import PaginatedTodos, TodoResponse, MessageResponse, TaskEnqueuedResponse
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
 from app.services.todo_service import TodoService
 from redis import asyncio as aioredis
@@ -12,6 +12,7 @@ from app.shared.redis_settings import get_redis_client
 import math
 from app.shared.auth import api_verifier
 from app.shared.cache_redis import _todo_key, _cache_get_json, _cache_set_json, _cache_delete
+from app.shared.config import get_settings
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 service = TodoService()
@@ -98,10 +99,19 @@ async def get_todo(todo_id: int, token: str = Security(api_verifier), redis_clie
     return {"message": NOTFOUND}
 
 
+# Internal reusable create flow for sync and Celery paths
+async def _create_todo_internal(todo_dict: dict) -> None:
+    todo = Todo(**todo_dict)
+    await service.create_todo(todo)
+    # Invalidate caches using the shared Redis client
+    redis_client = get_redis_client()
+    await _cache_delete(redis_client, KEY_ALL_TODOS, _todo_key(todo.id))
+
+
 @router.post(
     "/",
     response_model=MessageResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
     summary="Create a new todo item."
 )
 @limiter.limit("5/minute")
@@ -116,6 +126,23 @@ async def create_todo(todo: Todo, token: str = Security(api_verifier), redis_cli
     # Invalidate caches
     await _cache_delete(redis_client, KEY_ALL_TODOS, _todo_key(todo.id))
     return {"message": CREATED}
+
+
+@router.post(
+    "/async",
+    response_model=TaskEnqueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Enqueue a Celery task to create a new todo item."
+)
+@limiter.limit("5/minute")
+async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> Dict[str, str]:
+    # Import task lazily to avoid heavy imports at module import time
+    from app.tasks.todo_tasks import create_todo_task
+
+    payload = todo.model_dump(mode="json")
+    result = create_todo_task.delay(payload)
+    # Respond with task id so clients can track it (if a result backend is used)
+    return {"message": "enqueued", "task_id": result.id}
 
 
 @router.put(

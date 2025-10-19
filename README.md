@@ -105,9 +105,10 @@ Notes:
 - docker-compose maps host 8000 to container 8000. The image runs `uv run --env-file .env python3 run.py` and run.py defaults to PORT=8000, so no extra PORT override is required. If you change PORT in .env, update the compose ports accordingly.
 - Volumes: ./logs and ./app are mounted for live code changes and log persistence. The .env file is mounted read-only.
 - Services: compose also provisions Redis and PostgreSQL for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
+- Timezone: Set TZ=America/Caracas in your .env file. All services in docker-compose load .env via env_file, so they share the same timezone.
 
 TODO:
-- Provide a sample .env (e.g., .env.example) documenting recommended defaults (APP_ENV, DB_ENGINE/DATABASE_URL, AUTH_DEFAULT_TOKEN, Redis/Postgres settings, etc.).
+- Provide a sample .env (e.g., .env.example) documenting recommended defaults (APP_ENV, DB_ENGINE/DATABASE_URL, AUTH_DEFAULT_TOKEN, Redis/Postgres settings, TZ, etc.).
 
 
 ## Database and migrations

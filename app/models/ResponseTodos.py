@@ -24,3 +24,8 @@ class TodoResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class TaskEnqueuedResponse(BaseModel):
+    message: str
+    task_id: str
