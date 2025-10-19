@@ -1,6 +1,6 @@
 Project Development Guidelines (FastAPI Todos)
 
-Audience: Senior Python/FastAPI engineers. This document captures project-specific, verified workflows and caveats to accelerate development and debugging. Updated to reflect the current repository state as of 2025-10-19 16:40 local time.
+Audience: Senior Python/FastAPI engineers. This document captures project‑specific, verified workflows and caveats to accelerate development and debugging. Updated to reflect the current repository state as of 2025-10-19 18:23 local time.
 
 1) Build and Configuration
 
@@ -25,7 +25,7 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
     - TODO_DB_DIR: directory for the SQLite DB (defaults to settings module dir); created if missing.
     - TODO_DB_FILENAME: DB filename (default: todos.db). Set to :memory: for an in-memory SQLite database.
     - AUTH_DEFAULT_TOKEN: set to fix the default token value created/ensured at startup; otherwise a token is generated and logged once.
-  - Database backend selection (current, see app/shared/db.py & README):
+  - Database backend selection (see app/shared/db.py & README):
     - DB_ENGINE: sqlite (default), mysql, or postgresql. Primarily for local/dev defaults.
     - DATABASE_URL: full async DSN; if provided, it overrides granular parts.
       Examples:
@@ -37,6 +37,10 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
       - DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
   - Redis (optional; used by /redis-check):
     - REDIS_HOST (default localhost), REDIS_PORT (6379), REDIS_DB (0). See app/shared/redis_settings.py.
+  - Celery (optional; used by background tasks):
+    - CELERY_BROKER_URL (default in config points to local RabbitMQ)
+    - CELERY_RESULT_BACKEND (default rpc://)
+    - CELERY_TASK_ALWAYS_EAGER (set true in tests to run tasks inline if needed)
 
 - Auth token bootstrap at startup
   - On startup, app/shared/db.ensure_auth_token_async ensures an active token row with name=auth_crud_todos.
@@ -53,10 +57,12 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
 
 - Docker
   - Two-stage Dockerfile using uv.
-  - docker-compose up --build exposes 9000:9000.
+  - docker-compose up --build exposes 8000:8000 (host:container) for the API service.
   - Entrypoint runs: uv run --env-file .env python3 run.py (ensure .env exists if you rely on it).
-  - Volumes: ./logs and ./app mounted for live code changes.
-  - Port caveat: The app defaults to port 8000 (see run.py). To match the 9000:9000 mapping, set PORT=9000 in your .env, or adjust compose ports to 9000:8000 (host:container) or 8000:8000.
+  - Volumes: ./logs and ./app mounted for live code changes; .env is mounted read-only into the container.
+  - Port caveat: The app defaults to port 8000 (see run.py). If you change PORT in your .env, update the compose ports accordingly.
+  - Timezone: Centralized via .env. Set TZ=America/Caracas in your .env. All services load .env via env_file and pass TZ=${TZ} so they share the same timezone.
+  - Services: docker-compose provisions Redis, RabbitMQ, Celery worker, and PostgreSQL for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
 
 2) Testing
 

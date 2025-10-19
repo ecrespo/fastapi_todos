@@ -1,6 +1,36 @@
 # Changelog
 
-All notable changes to this project are documented here. This changelog captures the most recent commit history at the time of generation.
+All notable changes to this project are documented in this file.
+
+The format is based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/), and this project adheres to Semantic Versioning (https://semver.org/).
+
+## [0.3.0] - 2025-10-19
+Inferred bump: minor (new features added; no breaking changes detected)
+
+### Added
+- Pagination support for Todos APIs. [5c3a9ae](https://github.com/ecrespo/fastapi_todos/commit/5c3a9ae)
+- Celery integration for asynchronous task processing. [ca00d82](https://github.com/ecrespo/fastapi_todos/commit/ca00d82)
+- PostgreSQL support via async SQLAlchemy; compatible with existing SQLite flows. [e1716ae](https://github.com/ecrespo/fastapi_todos/commit/e1716ae)
+
+### Changed
+- Refactored Todos endpoints and introduced a centralized Redis caching utility to improve performance. [a9423e9](https://github.com/ecrespo/fastapi_todos/commit/a9423e9)
+- Developer tooling: added Makefile for streamlined workflows. [a50b77b](https://github.com/ecrespo/fastapi_todos/commit/a50b77b)
+
+### Fixed
+- No user-facing fixes in this release.
+
+### Deprecated
+- None.
+
+### Removed
+- None.
+
+### Security
+- No security-related changes in this release.
+
+---
+
+Legacy history (pre–Keep a Changelog snapshot)
 
 Generated: 2025-10-19 16:47 (local time)
 
@@ -30,5 +60,4 @@ Generated: 2025-10-19 16:47 (local time)
 - 0044212 — Initial commit (Ernesto Crespo)
 
 Notes:
-- This file reflects up to the latest 205 commits pulled directly from git history (repository currently includes 14 commits).
-- Future releases may adopt Keep a Changelog format with versioned sections and categorized changes (Added, Changed, Fixed, etc.).
+- This section reflects an earlier, non–Keep a Changelog style snapshot of commit history.

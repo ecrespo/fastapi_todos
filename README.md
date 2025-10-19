@@ -17,6 +17,7 @@ A minimal FastAPI application that exposes a simple CRUD API for todos with toke
 
 Key endpoints:
 - GET /healthcheck (rate limited to 5/min by default)
+- GET /redis-check
 - CRUD under /api/v1/todos
 - Interactive API docs: /docs (Swagger UI) and /redoc
 
@@ -25,7 +26,7 @@ Authentication for /api/v1/todos requires an Authorization: Bearer <token> heade
 
 ## Tech stack
 - Language: Python 3.13+
-- Frameworks/libraries: FastAPI, Starlette, Pydantic, slowapi, Rich, Uvicorn, SQLAlchemy (async), aiosqlite, Alembic, secure
+- Frameworks/libraries: FastAPI, Starlette, Pydantic, slowapi, Rich, Uvicorn, SQLAlchemy (async), aiosqlite, Alembic, secure, Redis (redis-py), Celery
 - Package/dependency manager: uv (pyproject.toml + uv.lock)
 - Testing: pytest + fastapi.testclient
 - Data: SQLite, PostgreSQL, MySQL
@@ -89,6 +90,11 @@ Database configuration (runtime):
 Redis (optional; used by /redis-check):
 - REDIS_HOST (default localhost), REDIS_PORT (default 6379), REDIS_DB (default 0). See app/shared/redis_settings.py.
 
+Celery (optional; background task processing):
+- CELERY_BROKER_URL (default in config points to local RabbitMQ; see app/shared/config.py and docker-compose.yaml)
+- CELERY_RESULT_BACKEND (default: rpc://)
+- CELERY_TASK_ALWAYS_EAGER (set true in tests or dev to execute tasks inline without a broker)
+
 Runtime/process vars (used by run.py):
 - HOST, PORT, WORKERS, RELOAD as described above.
 
@@ -104,7 +110,7 @@ CORS is permissive by default; GZip is enabled; rate limiting is available via @
 Notes:
 - docker-compose maps host 8000 to container 8000. The image runs `uv run --env-file .env python3 run.py` and run.py defaults to PORT=8000, so no extra PORT override is required. If you change PORT in .env, update the compose ports accordingly.
 - Volumes: ./logs and ./app are mounted for live code changes and log persistence. The .env file is mounted read-only.
-- Services: compose also provisions Redis and PostgreSQL for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
+- Services: docker-compose provisions Redis, RabbitMQ, a Celery worker, and PostgreSQL for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
 - Timezone: Set TZ=America/Caracas in your .env file. All services in docker-compose load .env via env_file, so they share the same timezone.
 
 TODO:
@@ -146,6 +152,7 @@ Testing notes:
   - repositories/: persistence using SQLAlchemy AsyncSession and raw SQL text queries.
   - middlewares/: custom error handling, request logging, process time header.
   - models/: request/response models (Pydantic v2).
+  - tasks/: Celery tasks for background processing.
 - alembic/: migration environment and versions.
 - run.py: convenience launcher wrapping uvicorn with env-var controls.
 - pyproject.toml: metadata and dependencies; requires Python >=3.13.
@@ -161,6 +168,7 @@ Testing notes:
   - uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   - uv run alembic upgrade head
   - uv run pytest -q
+  - uv run celery -A app.shared.celery_app:celery_app worker --loglevel=INFO -Q celery
 - Docker:
   - docker-compose up --build
 - App entry points:
@@ -254,7 +262,7 @@ Audience: Senior Python/FastAPI engineers. This document captures project-specif
 
 - Docker
   - Two-stage Dockerfile using uv.
-  - docker-compose up --build exposes 9000:9000.
+  - docker-compose up --build exposes 8000:8000.
   - Entrypoint runs: uv run --env-file .env python3 run.py (ensure .env exists if you rely on it).
   - Volumes: ./logs and ./app mounted for live code changes.
 
