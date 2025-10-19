@@ -2,9 +2,11 @@
 
 All notable changes to this project are documented here. This changelog captures the most recent commit history at the time of generation.
 
-Generated: 2025-10-19 13:50 (local time)
+Generated: 2025-10-19 14:25 (local time)
 
 ## 2025-10-19
+- 4a9895c — Add support for dotenv preload and additional async database drivers (Ernesto Crespo)
+- b891026 — Add support for multiple database backends (SQLite, MySQL, PostgreSQL) (Ernesto Crespo)
 - docs — Update project-specific development guidelines in README.md (Ernesto Crespo)
 - 63d69df — Add `created_at` and `status` columns to `todos` table (Ernesto Crespo)
 - 825706e — Add Alembic for database migrations and migrate to SQLAlchemy for async ORM (Ernesto Crespo)

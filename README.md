@@ -73,6 +73,16 @@ Core env vars (app behavior):
 - AUTH_DEFAULT_TOKEN: when set, the app ensures an active token row with name=auth_crud_todos using this value; otherwise, a token is generated and logged at startup.
 - RATE_LIMIT_EXEMPT_IPS: comma-separated IPs that bypass rate limiting (e.g., "127.0.0.1,192.168.1.10").
 
+Database configuration (runtime):
+- DB_ENGINE: database backend (sqlite|mysql|postgresql). Defaults to sqlite for local dev/tests.
+- DATABASE_URL: optional full DSN that takes precedence over granular settings.
+  Examples:
+  - SQLite memory: sqlite+aiosqlite://
+  - SQLite file:   sqlite+aiosqlite:///./app/shared/todos.db
+  - MySQL:         mysql+aiomysql://user:password@localhost:3306/todos
+  - PostgreSQL:    postgresql+asyncpg://user:password@localhost:5432/todos
+- DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME: used when DATABASE_URL is not set. Note: default DB_PORT varies by engine (3306 for MySQL, 5432 for PostgreSQL).
+
 Runtime/process vars (used by run.py):
 - HOST, PORT, WORKERS, RELOAD as described above.
 
@@ -142,6 +152,7 @@ Testing notes:
   - uv run python run.py
   - uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   - uv run alembic upgrade head
+  - uv run pytest -q
 - Docker:
   - docker-compose up --build
 - App entry points:
