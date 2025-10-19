@@ -1,6 +1,7 @@
 from typing import Dict, List
 
 from fastapi import APIRouter, Security
+from app.shared.rate_limiter import limiter
 from app.models.RequestsTodos import Todo
 from app.models.ResponseTodos import TodosBase
 from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
@@ -12,6 +13,7 @@ service = TodoService()
 
 
 @router.get("/", response_model=TodosBase)
+@limiter.limit("5/minute")
 async def get_todos(token: str = Security(api_verifier)) -> Dict[str, List[Todo]]:
     """
     Retrieve a list of todos.
@@ -26,6 +28,7 @@ async def get_todos(token: str = Security(api_verifier)) -> Dict[str, List[Todo]
 
 
 @router.get("/{todo_id}", response_model=None)
+@limiter.limit("5/minute")
 async def get_todo(todo_id: int,token: str = Security(api_verifier))-> Dict[str, Todo|str]:
     """
     Retrieves a specific to-do item by its ID. Searches through the
@@ -46,6 +49,7 @@ async def get_todo(todo_id: int,token: str = Security(api_verifier))-> Dict[str,
 
 
 @router.post("/", response_model=None)
+@limiter.limit("5/minute")
 async def create_todo(todo: Todo,token: str = Security(api_verifier))-> Dict[str, str]:
     """
     Handles the creation of a new todo item and appends it to the existing list of todos.
@@ -58,6 +62,7 @@ async def create_todo(todo: Todo,token: str = Security(api_verifier))-> Dict[str
 
 
 @router.put("/{todo_id}", response_model=None)
+@limiter.limit("5/minute")
 async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_verifier))-> Dict[str, str]:
     """
     Updates an existing todo item identified by its ID. This function iterates
@@ -82,6 +87,7 @@ async def update_todo(todo_id: int, todo_obj: Todo,token: str = Security(api_ver
 
 
 @router.delete("/{todo_id}", response_model=None)
+@limiter.limit("5/minute")
 async def delete_todo(todo_id: int,token: str = Security(api_verifier)) -> Dict[str, str]:
     """
     Deletes a specific todo item by its unique identifier.

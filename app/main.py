@@ -1,13 +1,14 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 
+from app.shared.rate_limiter import setup_rate_limiter, limiter
 from app.api.v1.todos import router as todo_router
 from app.shared.config import get_settings, Environment
 from app.shared.db import init_db, ensure_auth_token
@@ -17,6 +18,7 @@ from app.middlewares import (
 LoggingMiddleware,
 ProcessTimeHeaderMiddleware
 )
+
 
 settings = get_settings()
 
@@ -37,6 +39,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
+# Setup SlowAPI rate limiter and exception handler
+setup_rate_limiter(app)
 
 # Middlewares
 # Trusted hosts: allow all by default; customize via settings if needed
@@ -59,15 +63,16 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware)
 
 # Custom middleware: logging and timing
-app.add_middleware(LoggingMiddleware)
+app.add_middleware(LoggingMiddleware, logger=logger)
 app.add_middleware(ProcessTimeHeaderMiddleware)
 
 # Error handling (outermost)
-app.add_middleware(ErrorHandlingMiddleware)
+app.add_middleware(ErrorHandlingMiddleware, logger=logger)
 
 
 
 @app.get("/healthcheck")
+@limiter.limit("5/minute")
 async def health_check():
     """
     Handles the health check endpoint which verifies the application's
@@ -79,4 +84,4 @@ async def health_check():
     """
     return {"status": "ok"}
 
-app.include_router(todo_router)
+app.include_router(todo_router, prefix="/api/v1")

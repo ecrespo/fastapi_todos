@@ -1,0 +1,25 @@
+services:
+  api_todo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - TZ=America/Caracas
+    container_name: api_todo
+    ports:
+      - 9000:9000
+    networks:
+      - api_todo_network
+    volumes:
+      - './logs:/app/logs'
+      - './app:/app/'
+
+    restart: always
+
+
+
+networks:
+  api_todo_network:
+    driver: bridge
