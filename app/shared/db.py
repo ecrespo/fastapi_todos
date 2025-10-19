@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import aiosqlite
 
@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 );
 """
 
+# Async connection singleton holder
+_ASYNC_CONN: Optional[aiosqlite.Connection] = None
+
+
 def get_connection() -> sqlite3.Connection:
     """Create a new synchronous SQLite3 connection to the app database.
 
@@ -36,13 +40,16 @@ def get_connection() -> sqlite3.Connection:
 
 
 async def get_async_connection() -> aiosqlite.Connection:
-    """Create a new aiosqlite connection to the app database.
+    """Return a singleton aiosqlite connection to the app database.
 
-    Caller should not reuse across threads. Foreign keys are enabled.
+    The same connection instance is reused across calls within the process.
+    Foreign keys are enabled on first initialization.
     """
-    conn = await aiosqlite.connect(str(DB_PATH))
-    await conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    global _ASYNC_CONN
+    if _ASYNC_CONN is None:
+        _ASYNC_CONN = await aiosqlite.connect(str(DB_PATH))
+        await _ASYNC_CONN.execute("PRAGMA foreign_keys = ON;")
+    return _ASYNC_CONN
 
 
 def init_db() -> None:
@@ -58,11 +65,18 @@ def init_db() -> None:
 async def init_db_async() -> None:
     """Ensure database file and schema exist (async)."""
     conn = await get_async_connection()
-    try:
-        await conn.executescript(SCHEMA_SQL)
-        await conn.commit()
-    finally:
-        await conn.close()
+    await conn.executescript(SCHEMA_SQL)
+    await conn.commit()
+
+
+async def close_async_connection() -> None:
+    """Close the singleton async connection if it exists."""
+    global _ASYNC_CONN
+    if _ASYNC_CONN is not None:
+        try:
+            await _ASYNC_CONN.close()
+        finally:
+            _ASYNC_CONN = None
 
 
 def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
@@ -92,24 +106,21 @@ def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
 
 
 async def ensure_auth_token_async(name: str, token: str | None = None) -> Tuple[str, bool]:
-    """Async variant of ensure_auth_token."""
+    """Async variant of ensure_auth_token using the singleton connection."""
     import secrets
 
     conn = await get_async_connection()
-    try:
-        async with conn.execute(
-            "SELECT token FROM auth_tokens WHERE name = ? AND active = 1 LIMIT 1",
-            (name,),
-        ) as cur:
-            row = await cur.fetchone()
-        if row is not None:
-            return row[0], False
-        token_value = token or secrets.token_urlsafe(32)
-        await conn.execute(
-            "INSERT INTO auth_tokens (token, name, active) VALUES (?, ?, 1)",
-            (token_value, name),
-        )
-        await conn.commit()
-        return token_value, True
-    finally:
-        await conn.close()
+    async with conn.execute(
+        "SELECT token FROM auth_tokens WHERE name = ? AND active = 1 LIMIT 1",
+        (name,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is not None:
+        return row[0], False
+    token_value = token or secrets.token_urlsafe(32)
+    await conn.execute(
+        "INSERT INTO auth_tokens (token, name, active) VALUES (?, ?, 1)",
+        (token_value, name),
+    )
+    await conn.commit()
+    return token_value, True

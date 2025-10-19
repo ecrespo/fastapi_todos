@@ -2,9 +2,12 @@
 
 All notable changes to this project are documented here. This changelog captures the most recent commit history at the time of generation.
 
-Generated: 2025-10-19 10:46 (local time)
+Generated: 2025-10-19 12:37 (local time)
 
 ## 2025-10-19
+- 205efb6 — Add secure headers middleware (Ernesto Crespo)
+- a946bc2 — Introduce async database support with aiosqlite and overhaul Todos API (Ernesto Crespo)
+- b612852 — Add documentation files (Ernesto Crespo)
 - 63002fe — Add rate limiting with SlowAPI (Ernesto Crespo)
 
 ## 2025-10-18

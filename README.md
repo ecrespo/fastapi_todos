@@ -12,8 +12,9 @@ A minimal FastAPI application that exposes a simple CRUD API for todos with toke
 - Packaged and run using uv; Python 3.13 is the target runtime
 
 Key endpoints:
-- GET /healthcheck
+- GET /healthcheck (rate limited to 5/min by default)
 - CRUD under /api/v1/todos
+- Interactive API docs: /docs (Swagger UI) and /redoc
 
 Authentication for /api/v1/todos requires an Authorization: Bearer <token> header. On startup, the app ensures an auth token row exists. If AUTH_DEFAULT_TOKEN is not provided, one is generated and printed to the logs.
 
