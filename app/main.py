@@ -11,6 +11,7 @@ from secure import Secure
 
 from app.shared.rate_limiter import setup_rate_limiter, limiter
 from app.api.v1.todos import router as todo_router
+from app.api.v1.auth import router as auth_router
 from app.shared.config import get_settings, Environment
 from app.shared.db import init_db_async, ensure_auth_token_async, close_async_connection
 from app.shared.LoggerSingleton import logger
@@ -122,3 +123,4 @@ async def test_redis(redis_client: aioredis.Redis = Depends(get_redis_client)):
     return {"my_key": value}
 
 app.include_router(todo_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")

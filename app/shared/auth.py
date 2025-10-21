@@ -118,3 +118,51 @@ async def require_auth(
         )
 
     return token
+
+
+from typing import Sequence
+from fastapi import Depends
+from sqlalchemy import select
+from app.shared.db import UserORM
+
+
+def role_required(allowed_roles: Sequence[str]):
+    """Return a FastAPI dependency that ensures the caller has one of the allowed roles.
+
+    Backward compatibility: tokens without an associated user_id are treated as admin-equivalent.
+    """
+    allowed = set(r.lower() for r in allowed_roles)
+
+    async def _checker(token: str = Security(api_verifier)) -> None:  # type: ignore[override]
+        # Look up token -> user_id, then fetch user's role
+        async with (await get_async_session()) as session:
+            tok = await session.execute(
+                select(AuthTokenORM.user_id).where(
+                    AuthTokenORM.token == token,
+                    AuthTokenORM.active == 1,
+                ).limit(1)
+            )
+            row = tok.first()
+            user_id = row[0] if row else None
+            # Legacy tokens (no user) are allowed (treated as admin) to not break existing flows/tests
+            if user_id is None:
+                return
+            ures = await session.execute(
+                select(UserORM.role, UserORM.active).where(UserORM.id == user_id).limit(1)
+            )
+            urow = ures.first()
+        if not urow:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+        role, active = urow
+        # Extract comparable string from enum or plain string
+        role_str = getattr(role, "value", str(role)).lower()
+        if not active or role_str not in allowed:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        return None
+
+    return _checker
+
+
+# Common role dependencies
+editor_required = role_required(["editor", "admin"])
+admin_required = role_required(["admin"]) 

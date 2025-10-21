@@ -10,7 +10,7 @@ from app.services.todo_service import TodoService
 from redis import asyncio as aioredis
 from app.shared.redis_settings import get_redis_client
 import math
-from app.shared.auth import api_verifier
+from app.shared.auth import api_verifier, editor_required, admin_required
 from app.shared.cache_redis import _todo_key, _cache_get_json, _cache_set_json, _cache_delete
 from app.shared.config import get_settings
 router = APIRouter(prefix="/todos", tags=["todos"])
@@ -115,7 +115,7 @@ async def _create_todo_internal(todo_dict: dict) -> None:
     summary="Create a new todo item."
 )
 @limiter.limit("5/minute")
-async def create_todo(todo: Todo, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
+async def create_todo(todo: Todo, token: str = Security(api_verifier), _: None = Depends(editor_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
     """
     Handles the creation of a new todo item and appends it to the existing list of todos.
 
@@ -137,12 +137,25 @@ async def create_todo(todo: Todo, token: str = Security(api_verifier), redis_cli
 @limiter.limit("5/minute")
 async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> Dict[str, str]:
     # Import task lazily to avoid heavy imports at module import time
+    import os
     from app.tasks.todo_tasks import create_todo_task
 
     payload = todo.model_dump(mode="json")
-    result = create_todo_task.delay(payload)
+    # If eager mode is enabled (as in tests), run synchronously to avoid broker dependency
+    eager_env = os.getenv("CELERY_TASK_ALWAYS_EAGER", "").strip().lower()
+    eager = eager_env in {"1", "true", "yes", "on"}
+    if eager:
+        # Run inline using the same internal async flow used by the task
+        from app.api.v1.todos import _create_todo_internal  # circular-safe import
+        await _create_todo_internal(payload)
+        task_id = "eager"
+    else:
+        # Import celery app lazily to avoid initializing it when not needed
+        from app.shared.celery_app import celery_app
+        result = create_todo_task.delay(payload)
+        task_id = result.id
     # Respond with task id so clients can track it (if a result backend is used)
-    return {"message": "enqueued", "task_id": result.id}
+    return {"message": "enqueued", "task_id": task_id}
 
 
 @router.put(
@@ -152,7 +165,7 @@ async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> 
     summary="Update an existing todo item by its ID."
 )
 @limiter.limit("5/minute")
-async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
+async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_verifier), _: None = Depends(editor_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
     """
     Updates an existing todo item identified by its ID. This function iterates
     through the list of todos to find a matching ID, then updates the title
@@ -188,7 +201,7 @@ async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_ve
     summary="Delete a specific todo item by its ID."
 )
 @limiter.limit("5/minute")
-async def delete_todo(todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
+async def delete_todo(todo_id: int, token: str = Security(api_verifier), _: None = Depends(admin_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
     """
     Deletes a specific todo item by its unique identifier.
 

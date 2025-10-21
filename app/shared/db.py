@@ -139,6 +139,23 @@ class TodoStatus(str, Enum):
     cancel = "cancel"
 
 
+class UserRole(str, Enum):
+    viewer = "viewer"
+    editor = "editor"
+    admin = "admin"
+
+
+class UserORM(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole, name="user_role"), nullable=False)
+    active: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_at: Mapped[Optional[str]] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+
+
 class TodoORM(Base):
     __tablename__ = "todos"
 
@@ -157,6 +174,7 @@ class AuthTokenORM(Base):
 
     token: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[Optional[str]] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     active: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
