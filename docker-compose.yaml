@@ -10,6 +10,11 @@ services:
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=rpc://
     container_name: api_todo
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api_todo.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.api_todo.entrypoints=web"
+      - "traefik.http.services.api_todo.loadbalancer.server.port=8000"
     ports:
       - 8000:8000
     networks:
@@ -43,6 +48,23 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+    networks:
+      - api_todo_network
+    restart: always
+
+  traefik:
+    image: traefik:v2.10
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"
+      - "${TRAEFIK_DASHBOARD_PORT:-8099}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - api_todo_network
     restart: always

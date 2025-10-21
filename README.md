@@ -120,8 +120,14 @@ CORS is permissive by default; GZip is enabled; rate limiting is available via @
 Notes:
 - docker-compose maps host 8000 to container 8000. The image runs `uv run --env-file .env python3 run.py` and run.py defaults to PORT=8000, so no extra PORT override is required. If you change PORT in .env, update the compose ports accordingly.
 - Volumes: ./logs and ./app are mounted for live code changes and log persistence. The .env file is mounted read-only.
-- Services: docker-compose provisions Redis, RabbitMQ, a Celery worker, and PostgreSQL for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
+- Services: docker-compose provisions Redis, RabbitMQ, a Celery worker, PostgreSQL, and now Traefik for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
 - Timezone: Set TZ=America/Caracas in your .env file. All services in docker-compose load .env via env_file, so they share the same timezone.
+
+Reverse proxy (Traefik):
+- A Traefik v2 service is included as a reverse proxy.
+- Access the API via http://localhost (Traefik routes PathPrefix(`/`) to the api_todo service on port 8000, which runs uvicorn via run.py).
+- Traefik dashboard (dev only): http://localhost:8099 (configurable via TRAEFIK_DASHBOARD_PORT in .env; defaults to 8099). If you see a "port is already in use" error from Docker, set TRAEFIK_DASHBOARD_PORT in your .env to any free port (e.g., 18081) and re-run docker-compose.
+- Direct access to the app is also available at http://localhost:8000 (exposed by compose) if needed.
 
 TODO:
 - Provide a sample .env (e.g., .env.example) documenting recommended defaults (APP_ENV, DB_ENGINE/DATABASE_URL, AUTH_DEFAULT_TOKEN, Redis/Postgres settings, TZ, etc.).
