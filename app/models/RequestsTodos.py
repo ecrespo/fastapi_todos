@@ -23,6 +23,7 @@ class Todo(BaseModel):
     item: str
     status: TodoStatus = TodoStatus.pending
     created_at: Optional[datetime] = None
+    user_id: Optional[int] = None
 
     @field_validator("status", mode="before")
     @classmethod

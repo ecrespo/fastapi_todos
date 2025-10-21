@@ -166,3 +166,19 @@ def role_required(allowed_roles: Sequence[str]):
 # Common role dependencies
 editor_required = role_required(["editor", "admin"])
 admin_required = role_required(["admin"]) 
+
+
+async def get_user_id_for_token(token: str) -> Optional[int]:
+    """Return the user_id associated to a token if present and active; otherwise None.
+
+    Legacy tokens without user binding will return None.
+    """
+    async with (await get_async_session()) as session:
+        result = await session.execute(
+            select(AuthTokenORM.user_id).where(
+                AuthTokenORM.token == token,
+                AuthTokenORM.active == 1,
+            ).limit(1)
+        )
+        row = result.first()
+    return row[0] if row else None

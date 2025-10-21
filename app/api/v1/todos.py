@@ -10,7 +10,7 @@ from app.services.todo_service import TodoService
 from redis import asyncio as aioredis
 from app.shared.redis_settings import get_redis_client
 import math
-from app.shared.auth import api_verifier, editor_required, admin_required
+from app.shared.auth import api_verifier, editor_required, admin_required, get_user_id_for_token
 from app.shared.cache_redis import _todo_key, _cache_get_json, _cache_set_json, _cache_delete
 from app.shared.config import get_settings
 router = APIRouter(prefix="/todos", tags=["todos"])
@@ -119,9 +119,18 @@ async def create_todo(todo: Todo, token: str = Security(api_verifier), _: None =
     """
     Handles the creation of a new todo item and appends it to the existing list of todos.
 
+    Associates the todo with the user bound to the provided Bearer token (if any).
+
     :param todo: The Todo object containing the details of the todo item to be created.
     :return: A dictionary indicating the success message upon todo creation.
     """
+    # Resolve user_id from token (may be None for legacy tokens)
+    try:
+        user_id = await get_user_id_for_token(token)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    todo.user_id = user_id
+
     await service.create_todo(todo)
     # Invalidate caches
     await _cache_delete(redis_client, KEY_ALL_TODOS, _todo_key(todo.id))
@@ -140,7 +149,14 @@ async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> 
     import os
     from app.tasks.todo_tasks import create_todo_task
 
+    # Resolve user_id from token and include in payload
+    try:
+        user_id = await get_user_id_for_token(token)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
     payload = todo.model_dump(mode="json")
+    payload["user_id"] = user_id
     # If eager mode is enabled (as in tests), run synchronously to avoid broker dependency
     eager_env = os.getenv("CELERY_TASK_ALWAYS_EAGER", "").strip().lower()
     eager = eager_env in {"1", "true", "yes", "on"}

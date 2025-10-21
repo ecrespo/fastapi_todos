@@ -57,8 +57,13 @@ class TodoRepository:
         async with await get_async_session() as session:
             # created_at is server default; status provided or default at DB level
             await session.execute(
-                text("INSERT INTO todos (id, item, status) VALUES (:id, :item, :status)"),
-                {"id": todo.id, "item": todo.item, "status": getattr(todo.status, 'value', todo.status)},
+                text("INSERT INTO todos (id, item, status, user_id) VALUES (:id, :item, :status, :user_id)"),
+                {
+                    "id": todo.id,
+                    "item": todo.item,
+                    "status": getattr(todo.status, 'value', todo.status),
+                    "user_id": todo.user_id,
+                },
             )
             await session.commit()
 

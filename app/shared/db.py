@@ -166,7 +166,12 @@ class TodoORM(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
-    status: Mapped[TodoStatus] = mapped_column(SAEnum(TodoStatus, name="todo_status"), nullable=False, server_default=text("'pending'"))
+    status: Mapped[TodoStatus] = mapped_column(
+        SAEnum(TodoStatus, name="todo_status"),
+        nullable=False,
+        server_default=text("'pending'"),
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class AuthTokenORM(Base):
