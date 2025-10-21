@@ -1,6 +1,6 @@
 Project Development Guidelines (FastAPI Todos)
 
-Audience: Senior Python/FastAPI engineers. This document captures project‑specific, verified workflows and caveats to accelerate development and debugging. Updated to reflect the current repository state as of 2025-10-19 18:23 local time.
+Audience: Senior Python/FastAPI engineers. This document captures project‑specific, verified workflows and caveats to accelerate development and debugging. Updated to reflect the current repository state as of 2025-10-21 19:13 local time.
 
 1) Build and Configuration
 
@@ -123,17 +123,42 @@ Audience: Senior Python/FastAPI engineers. This document captures project‑spec
     - Demo test (temporary file tests/test_demo_guidelines.py):
       - uv run pytest -q tests/test_demo_guidelines.py -> 1 passed.
       - The temporary test file was removed afterward to keep the repo clean.
+  - On 2025-10-21 19:13 local time:
+    - Baseline run: uv run pytest -q -> 22 passed.
+    - New tests added covering auth and RBAC flows:
+      - tests/test_auth_login.py
+      - tests/test_first_user_admin.py
+      - tests/test_rbac_todos.py
 
 3) Additional Development Information
 
-- API authentication
-  - All /api/v1/todos endpoints require a Bearer token that exists and is active in auth_tokens (see app/shared/auth.py). The shared test fixture inserts 'test-token' and preconfigures Authorization headers on the TestClient.
+- API authentication and RBAC
+  - All /api/v1/todos endpoints and admin user-management endpoints require a Bearer token that exists and is active in auth_tokens (see app/shared/auth.py). The shared test fixture inserts 'test-token' and preconfigures Authorization headers on the TestClient.
+  - User and token model:
+    - Users live in the users table with fields: id, username (unique), password_hash, role (Enum: viewer, editor, admin), active, created_at.
+    - Tokens live in auth_tokens and may be linked to users via auth_tokens.user_id (nullable for legacy tokens).
+    - Backward compatibility: legacy tokens without a user_id are treated as admin-equivalent in RBAC checks to avoid breaking existing flows/tests.
+  - Auth endpoints (app/api/v1/auth.py):
+    - POST /api/v1/auth/register: create a user. First registered user becomes admin; subsequent users default to viewer. Accepts username/user, password, confirm_password.
+    - POST /api/v1/auth/login: issues an access_token (bearer) and persists it linked to the user_id.
+    - GET /api/v1/auth/users: list active users. Admin only.
+    - GET /api/v1/auth/users/{user_id}: get a single user. Admin only.
+    - PATCH /api/v1/auth/users/{user_id}/role: update a user's role. Admin only.
+    - PATCH /api/v1/auth/users/{user_id}/password: change password; allowed for admin or the same user.
+  - Todos RBAC rules (app/api/v1/todos.py):
+    - GET /api/v1/todos: allowed to all authenticated tokens; admins (or legacy tokens) see all todos; non-admin users see only their own (todos.user_id) and pagination/cache is scoped accordingly.
+    - GET /api/v1/todos/{id}: allowed to all authenticated tokens.
+    - POST /api/v1/todos/: requires editor or admin (legacy tokens allowed). Created todos are associated to the caller via todos.user_id when available.
+    - PUT /api/v1/todos/{id}: requires editor or admin.
+    - DELETE /api/v1/todos/{id}: requires admin.
 
 - Database layer
   - SQLite with SQLAlchemy Async engine and declarative models defined in app/shared/db.py. Schema is created via Base.metadata.create_all at startup (init_db_async in app.main lifespan) and in tests via init_db().
   - DB connection URL is derived from Settings + DB_ENGINE/DATABASE_URL at import/runtime; tests override app.shared.db.DB_PATH prior to connection creation. init_db() resets the async engine so re-pointing DB_PATH takes effect.
   - If you need to re-point the DB at runtime, update the module-level DB_PATH before obtaining new connections.
-  - Todo model fields include: id, item, created_at (server default CURRENT_TIMESTAMP), and status (Enum: start, in_process, pending, done, cancel; default pending).
+  - Todo model fields include: id, item, created_at (server default CURRENT_TIMESTAMP), status (Enum: start, in_process, pending, done, cancel; default pending), and user_id (nullable owner link).
+  - auth_tokens now include user_id (nullable) to link issued tokens to users; legacy rows without user_id remain valid.
+  - Users table fields: id, username (unique), password_hash, role (Enum: viewer, editor, admin), active, created_at.
   - ensure_auth_token/ensure_auth_token_async use sqlite3/async engine to ensure compatibility with test setup.
   - For PostgreSQL bootstrap in containers, see sql/init_postgres.sql (idempotent type/table creation for enums and tables).
 
@@ -143,9 +168,12 @@ Audience: Senior Python/FastAPI engineers. This document captures project‑spec
     - uv run alembic upgrade head
   - Create a new migration with autogenerate (ensure models are up-to-date and set DATABASE_URL or rely on alembic.ini):
     - uv run alembic revision --autogenerate -m "your message"
-  - Recent migrations present (2025-10-19):
+  - Recent migrations present (2025-10-21):
     - 20251019_000001_init.py
     - 20251019_000002_add_todo_created_at_status.py
+    - 20251021_000003_add_user_id_to_auth_tokens.py
+    - 20251021_000004_create_users_table.py
+    - 20251021_000005_add_user_id_to_todos.py
 
 - Service and repository abstraction
   - app/services/todo_service.py encapsulates domain logic.

@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/), and this project adheres to Semantic Versioning (https://semver.org/).
 
+## [0.4.0] - 2025-10-21
+Inferred bump: minor (new features; no breaking changes detected)
+
+### Added
+- User management endpoints and role-based access control (RBAC). [cfe6742](https://github.com/ecrespo/fastapi_todos/commit/cfe6742)
+- First-user admin bootstrap and enhanced user-role management. [570a565](https://github.com/ecrespo/fastapi_todos/commit/570a565)
+- User-specific scoping for todos (non-admins see only their own) and coverage support. [8581a0d](https://github.com/ecrespo/fastapi_todos/commit/8581a0d)
+
+### Changed
+- Adopted Keep a Changelog format and updated project documentation. [ca2e33c](https://github.com/ecrespo/fastapi_todos/commit/ca2e33c)
+
+### Fixed
+- No user-facing fixes in this release.
+
+### Deprecated
+- None.
+
+### Removed
+- None.
+
+### Security
+- Strengthened access controls via RBAC and admin-only operations.
+
+
 ## [0.3.0] - 2025-10-19
 Inferred bump: minor (new features added; no breaking changes detected)
 
