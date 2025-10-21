@@ -11,7 +11,7 @@ LINT_PATHS := app tests run.py
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install run up up-d down logs restart test test-file test-node lint imports naming format types security check
+.PHONY: help install run up up-d down logs restart test test-file test-node test-cov lint imports naming format types security check
 
 help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*##"; printf "\nAvailable targets:\n\n"} /^[a-zA-Z0-9_.-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } /^## / { printf "\n%s\n", substr($$0,4) }' $(MAKEFILE_LIST)
@@ -49,6 +49,13 @@ test-file: ## Run tests for a specific file: make test-file FILE=tests/test_todo
 test-node: ## Run a single test node: make test-node NODE=tests/test_file.py::test_name
 	@test -n "$(NODE)" || (echo "Usage: make test-node NODE=tests/test_file.py::test_name" && exit 2)
 	$(PYTEST) $(NODE)
+
+# Coverage
+# Note: coverage options are configured in pyproject.toml addopts
+# Override minimum threshold with: make test-cov MIN=85
+MIN ?= 0
+test-cov: ## Run all tests with coverage reports (term, XML, HTML)
+	$(UV) run pytest -q --cov=app --cov-report=term-missing:skip-covered --cov-report=xml --cov-report=html --cov-fail-under=$(MIN)
 
 # Linting and formatting
 lint: ## Run ruff static analysis (PEP8 errors, pyflakes, import order, upgrades, naming, etc.)

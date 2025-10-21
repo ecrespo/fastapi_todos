@@ -21,9 +21,10 @@ class TodoService:
     def __init__(self, repository: Optional[TodoRepository] = None) -> None:
         self._repo = repository or TodoRepository()
 
-    async def get_todos(self, page: int, size: int) -> Tuple[List[Todo], int]:
+    async def get_todos(self, page: int, size: int, user_id: Optional[int] = None) -> Tuple[List[Todo], int]:
         """
         Returns a slice of todos and the total count.
+        If user_id is provided, restrict results to that user's todos.
         Falls back to the legacy get_all() repository method if a paginated
         method is not implemented by the repository (used by some unit tests).
         """
@@ -31,9 +32,11 @@ class TodoService:
         # Prefer repo pagination if available
         get_paginated = getattr(self._repo, "get_paginated", None)
         if get_paginated is not None:
-            return await _maybe_await(get_paginated(offset, size))
-        # Fallback: load all then slice
+            return await _maybe_await(get_paginated(offset, size, user_id))
+        # Fallback: load all then slice (and filter if needed)
         all_items: List[Todo] = await _maybe_await(self._repo.get_all())
+        if user_id is not None:
+            all_items = [t for t in all_items if getattr(t, "user_id", None) == user_id]
         total = len(all_items)
         return all_items[offset: offset + size], total
 

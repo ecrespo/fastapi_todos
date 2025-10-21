@@ -10,7 +10,7 @@ from app.services.todo_service import TodoService
 from redis import asyncio as aioredis
 from app.shared.redis_settings import get_redis_client
 import math
-from app.shared.auth import api_verifier, editor_required, admin_required, get_user_id_for_token
+from app.shared.auth import api_verifier, editor_required, admin_required, get_user_id_for_token, is_admin_token
 from app.shared.cache_redis import _todo_key, _cache_get_json, _cache_set_json, _cache_delete
 from app.shared.config import get_settings
 router = APIRouter(prefix="/todos", tags=["todos"])
@@ -36,15 +36,25 @@ async def get_todos(
     """
     Retrieve a paginated list of todos.
 
-    Returns the requested page of todos and pagination metadata.
+    Admin users (or legacy tokens) see all todos. Non-admin users only see their own todos.
     """
-    cache_key = f"{KEY_ALL_TODOS}:{page}:{size}"
+    # Determine scope from token
+    try:
+        admin = await is_admin_token(token)
+        user_id = None if admin else await get_user_id_for_token(token)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    scope_prefix = KEY_ALL_TODOS if admin else f"todos:user:{user_id}"
+    cache_key = f"{scope_prefix}:{page}:{size}"
+
     # Try cache first
     cached = await _cache_get_json(redis_client, cache_key)
     if cached and isinstance(cached, dict) and "todos" in cached and "pagination" in cached:
         return cached
-    # Fallback to service
-    items, total = await service.get_todos(page=page, size=size)
+
+    # Fallback to service with appropriate filtering
+    items, total = await service.get_todos(page=page, size=size, user_id=None if admin else user_id)
     pages = math.ceil(total / size) if size > 0 else 0
     payload = {
         "todos": items,
@@ -58,7 +68,7 @@ async def get_todos(
         }
         await _cache_set_json(redis_client, cache_key, serializable)
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     return payload
 
 

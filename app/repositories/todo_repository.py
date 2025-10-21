@@ -15,29 +15,47 @@ class TodoRepository:
 
     async def get_all(self) -> List[Todo]:
         async with await get_async_session() as session:
-            res = await session.execute(text("SELECT id, item, status, created_at FROM todos ORDER BY id ASC"))
+            res = await session.execute(text("SELECT id, item, status, created_at, user_id FROM todos ORDER BY id ASC"))
             rows = res.fetchall()
             return [
-                Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]))
+                Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]), user_id=row[4])
                 for row in rows
             ]
 
-    async def get_paginated(self, offset: int, limit: int) -> tuple[List[Todo], int]:
-        """Return a page slice and the total count."""
+    async def get_paginated(self, offset: int, limit: int, user_id: Optional[int] = None) -> tuple[List[Todo], int]:
+        """Return a page slice and the total count.
+        If user_id is provided, restrict results to that user's todos.
+        """
         async with await get_async_session() as session:
-            # Total count first
-            res_total = await session.execute(text("SELECT COUNT(*) FROM todos"))
+            # Total count first (filtered if user_id provided)
+            if user_id is not None:
+                res_total = await session.execute(
+                    text("SELECT COUNT(*) FROM todos WHERE user_id = :user_id"),
+                    {"user_id": user_id},
+                )
+            else:
+                res_total = await session.execute(text("SELECT COUNT(*) FROM todos"))
             total = int(res_total.scalar() or 0)
             if total == 0:
                 return [], 0
             # Page slice
-            res = await session.execute(
-                text("SELECT id, item, status, created_at FROM todos ORDER BY id ASC LIMIT :limit OFFSET :offset"),
-                {"limit": limit, "offset": offset},
-            )
+            if user_id is not None:
+                res = await session.execute(
+                    text(
+                        "SELECT id, item, status, created_at, user_id FROM todos WHERE user_id = :user_id ORDER BY id ASC LIMIT :limit OFFSET :offset"
+                    ),
+                    {"limit": limit, "offset": offset, "user_id": user_id},
+                )
+            else:
+                res = await session.execute(
+                    text(
+                        "SELECT id, item, status, created_at, user_id FROM todos ORDER BY id ASC LIMIT :limit OFFSET :offset"
+                    ),
+                    {"limit": limit, "offset": offset},
+                )
             rows = res.fetchall()
             items = [
-                Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]))
+                Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]), user_id=row[4])
                 for row in rows
             ]
             return items, total
@@ -45,13 +63,13 @@ class TodoRepository:
     async def get_by_id(self, todo_id: int) -> Optional[Todo]:
         async with await get_async_session() as session:
             res = await session.execute(
-                text("SELECT id, item, status, created_at FROM todos WHERE id = :id"),
+                text("SELECT id, item, status, created_at, user_id FROM todos WHERE id = :id"),
                 {"id": todo_id},
             )
             row = res.first()
             if row is None:
                 return None
-            return Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]))
+            return Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]), user_id=row[4])
 
     async def create(self, todo: Todo) -> None:
         async with await get_async_session() as session:
@@ -77,13 +95,13 @@ class TodoRepository:
             if (res.rowcount or 0) == 0:
                 return None
             res2 = await session.execute(
-                text("SELECT id, item, status, created_at FROM todos WHERE id = :id"),
+                text("SELECT id, item, status, created_at, user_id FROM todos WHERE id = :id"),
                 {"id": todo_id},
             )
             row = res2.first()
             if row is None:
                 return None
-            return Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]))
+            return Todo(id=row[0], item=row[1], status=row[2], created_at=_parse_dt(row[3]), user_id=row[4])
 
     async def delete(self, todo_id: int) -> bool:
         async with await get_async_session() as session:

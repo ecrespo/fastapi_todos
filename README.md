@@ -143,6 +143,18 @@ Testing notes:
 - For unit-style tests without DB side-effects, monkeypatch the module-level service used by the router as shown in tests/test_todos_unit.py.
 
 
+## Test coverage
+Run tests with coverage reports already configured in pytest:
+- uv run pytest -q
+
+Or use the Makefile target with an optional minimum threshold:
+- make test-cov MIN=85
+
+Reports generated:
+- Terminal summary with missing lines (skip-covered)
+- HTML report: htmlcov/index.html
+- XML report: coverage.xml
+
 ## Project structure
 - app/
   - main.py: FastAPI app and middleware setup; healthcheck; router mounting; startup DB init and auth token bootstrap.

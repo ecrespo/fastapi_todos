@@ -168,6 +168,32 @@ editor_required = role_required(["editor", "admin"])
 admin_required = role_required(["admin"]) 
 
 
+async def is_admin_token(token: str) -> bool:
+    """Return True if the token belongs to an active admin user.
+    Legacy tokens without user binding are treated as admin for backward compatibility.
+    """
+    async with (await get_async_session()) as session:
+        tok = await session.execute(
+            select(AuthTokenORM.user_id).where(
+                AuthTokenORM.token == token,
+                AuthTokenORM.active == 1,
+            ).limit(1)
+        )
+        row = tok.first()
+        user_id = row[0] if row else None
+        if user_id is None:
+            return True
+        ures = await session.execute(
+            select(UserORM.role, UserORM.active).where(UserORM.id == user_id).limit(1)
+        )
+        urow = ures.first()
+    if not urow:
+        return False
+    role, active = urow
+    role_str = getattr(role, "value", str(role)).lower()
+    return bool(active) and role_str == "admin"
+
+
 async def get_user_id_for_token(token: str) -> Optional[int]:
     """Return the user_id associated to a token if present and active; otherwise None.
 
