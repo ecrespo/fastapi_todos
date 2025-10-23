@@ -1,6 +1,6 @@
 import os
 from contextlib import asynccontextmanager
-
+from fastapi_mcp import FastApiMCP
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -44,6 +44,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
+mcp = FastApiMCP(
+    app,
+    include_operations=["get_todos","create_todo","get_todo","update_todo"])
+mcp.mount()
+
 # Setup SlowAPI rate limiter and exception handler
 setup_rate_limiter(app)
 

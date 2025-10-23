@@ -32,6 +32,7 @@ async def get_todos(
     size: int = Query(10, ge=1, le=100, description="Page size (1-100)"),
     token: str = Security(api_verifier),
     redis_client: aioredis.Redis = Depends(get_redis_client),
+    operation_id: str = "get_todos",
 ) -> Dict[str, List[Todo]]:
     """
     Retrieve a paginated list of todos.
@@ -79,7 +80,12 @@ async def get_todos(
     summary="Retrieve a specific to-do item by its ID."
 )
 @limiter.limit("5/minute")
-async def get_todo(todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
+async def get_todo(
+        todo_id: int,
+        token: str = Security(api_verifier),
+        redis_client: aioredis.Redis = Depends(get_redis_client),
+        operation_id: str = "get_todo",
+) -> Dict[str, Todo | str]:
     """
     Retrieves a specific to-do item by its ID. Searches through the
     list of to-do items and returns the item if found. If the item
@@ -125,7 +131,13 @@ async def _create_todo_internal(todo_dict: dict) -> None:
     summary="Create a new todo item."
 )
 @limiter.limit("5/minute")
-async def create_todo(todo: Todo, token: str = Security(api_verifier), _: None = Depends(editor_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
+async def create_todo(
+        todo: Todo,
+        token: str = Security(api_verifier),
+        _: None = Depends(editor_required),
+        redis_client: aioredis.Redis = Depends(get_redis_client),
+        operation_id: str = "create_todo"
+) -> Dict[str, str]:
     """
     Handles the creation of a new todo item and appends it to the existing list of todos.
 
@@ -154,7 +166,11 @@ async def create_todo(todo: Todo, token: str = Security(api_verifier), _: None =
     summary="Enqueue a Celery task to create a new todo item."
 )
 @limiter.limit("5/minute")
-async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> Dict[str, str]:
+async def create_todo_async(
+        todo: Todo,
+        token: str = Security(api_verifier),
+        operation_id: str = "create_todo_async"
+) -> Dict[str, str]:
     # Import task lazily to avoid heavy imports at module import time
     import os
     from app.tasks.todo_tasks import create_todo_task
@@ -191,7 +207,14 @@ async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> 
     summary="Update an existing todo item by its ID."
 )
 @limiter.limit("5/minute")
-async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_verifier), _: None = Depends(editor_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
+async def update_todo(
+        todo_id: int,
+        todo_obj: Todo,
+        token: str = Security(api_verifier),
+        _: None = Depends(editor_required),
+        redis_client: aioredis.Redis = Depends(get_redis_client),
+        operation_id: str = "update_todo"
+) -> Dict[str, Todo | str]:
     """
     Updates an existing todo item identified by its ID. This function iterates
     through the list of todos to find a matching ID, then updates the title
@@ -227,7 +250,13 @@ async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_ve
     summary="Delete a specific todo item by its ID."
 )
 @limiter.limit("5/minute")
-async def delete_todo(todo_id: int, token: str = Security(api_verifier), _: None = Depends(admin_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
+async def delete_todo(
+        todo_id: int,
+        token: str = Security(api_verifier),
+        _: None = Depends(admin_required),
+        redis_client: aioredis.Redis = Depends(get_redis_client),
+        operation_id: str = "delete_todo"
+) -> Dict[str, str]:
     """
     Deletes a specific todo item by its unique identifier.
 
