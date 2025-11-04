@@ -3,11 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
 
 
 class Environment(str, Enum):
@@ -17,7 +16,7 @@ class Environment(str, Enum):
     prod = "prod"
 
 
-def _resolve_env_file(env: str | Environment | None) -> Optional[str]:
+def _resolve_env_file(env: str | Environment | None) -> str | None:
     # Priority: explicit APP_ENV/ENVIRONMENT-specific file -> generic .env
     # e.g., .env.develop, .env.staging, .env.qa, .env.prod
     env_name = str(env or "").strip().lower()
@@ -61,10 +60,35 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_db: int = Field(default=0, alias="REDIS_DB")
 
+    # Rate limiting configuration (SlowAPI)
+    # Comma-separated list, supports any SlowAPI/flask-limiter syntax, e.g., "100/minute", "1000 per hour"
+    rate_limit_defaults: str = Field(default="100/minute", alias="RATE_LIMIT_DEFAULTS")
+    # Exempt IPs to bypass rate limits (helpful for local tests and health checks); comma-separated
+    rate_limit_exempt_ips: str = Field(default="127.0.0.1,::1", alias="RATE_LIMIT_EXEMPT_IPS")
+    # Exempt exact request paths (e.g., docs and OpenAPI) to avoid rate limiting docs UIs; comma-separated
+    rate_limit_exempt_paths: str = Field(default="/docs,/redoc,/openapi.json,/metrics", alias="RATE_LIMIT_EXEMPT_PATHS")
+
     # Celery configuration (RabbitMQ by default; tests may set eager mode)
     celery_broker_url: str = Field(default="pyamqp://guest@localhost//", alias="CELERY_BROKER_URL")
     celery_result_backend: str = Field(default="rpc://", alias="CELERY_RESULT_BACKEND")
     celery_task_always_eager: bool = Field(default=False, alias="CELERY_TASK_ALWAYS_EAGER")
+
+    # JWT configuration
+    jwt_secret_key: str = Field(
+        default="change-this-to-a-secure-random-key-in-production-min-32-chars", alias="JWT_SECRET_KEY"
+    )
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_access_token_expire_minutes: int = Field(default=30, alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")  # 30 minutes
+    jwt_refresh_token_expire_days: int = Field(default=30, alias="JWT_REFRESH_TOKEN_EXPIRE_DAYS")  # 30 days
+
+    # CORS configuration
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000",
+        alias="CORS_ORIGINS",
+    )
+    cors_allow_credentials: bool = Field(default=True, alias="CORS_ALLOW_CREDENTIALS")
+    cors_allow_methods: str = Field(default="GET,POST,PUT,DELETE,PATCH,OPTIONS", alias="CORS_ALLOW_METHODS")
+    cors_allow_headers: str = Field(default="*", alias="CORS_ALLOW_HEADERS")
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

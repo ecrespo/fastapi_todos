@@ -1,81 +1,153 @@
-import sys
-import os
-import json
+"""Structured logging configuration using structlog with Rich console output and JSON file output."""
+
 import logging
+import os
 from datetime import datetime
-from typing import Any, Dict
+from pathlib import Path
+
+import structlog
+from rich.console import Console
 from rich.logging import RichHandler
 
 from app.shared.config import get_settings
 
 
-class JSONFormatter(logging.Formatter):
-    """Simple JSON formatter for logging records."""
+def setup_structlog() -> structlog.stdlib.BoundLogger:
+    """Configure structlog with Rich console output and JSON file output.
 
-    def format(self, record: logging.LogRecord) -> str:
-        log: Dict[str, Any] = {
-            "time": datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        # Include optional attributes if present
-        if record.exc_info:
-            log["exc_info"] = self.formatException(record.exc_info)
-        if hasattr(record, "extra") and isinstance(record.extra, dict):
-            log.update(record.extra)
-        return json.dumps(log, ensure_ascii=False)
+    Returns:
+        Configured structlog logger instance
+    """
+    # Create logs directory
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+
+    # Generate log filename with date
+    log_filename = logs_dir / f"{datetime.now().strftime('%Y-%m-%d')}.log"
+
+    # Get app name from settings
+    try:
+        app_name = get_settings().app_name
+    except Exception:
+        app_name = "app"
+
+    # Configure standard logging
+    logging.basicConfig(
+        format="%(message)s",
+        level=logging.INFO,
+        handlers=[],  # We'll add handlers manually
+    )
+
+    # Console output with Rich (colorized, human-readable)
+    console = Console(stderr=True, force_terminal=True)
+    rich_handler = RichHandler(
+        console=console,
+        rich_tracebacks=True,
+        tracebacks_show_locals=False,
+        markup=True,
+        show_time=True,
+        show_level=True,
+        show_path=True,
+    )
+    rich_handler.setLevel(logging.INFO)
+
+    # File output with JSON (structured, machine-readable)
+    file_handler = logging.FileHandler(log_filename, encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+
+    # Get root logger and configure handlers
+    root_logger = logging.getLogger()
+    root_logger.handlers = []  # Clear existing handlers
+    root_logger.addHandler(rich_handler)
+    root_logger.addHandler(file_handler)
+    root_logger.setLevel(logging.INFO)
+
+    # Configure structlog processors
+    shared_processors = [
+        # Add extra attributes of LogRecord objects to the event dictionary
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        # Add timestamp
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        # Add stack info if available
+        structlog.processors.StackInfoRenderer(),
+        # Format exception info if present
+        structlog.processors.format_exc_info,
+        # Unicode decode errors
+        structlog.processors.UnicodeDecoder(),
+    ]
+
+    # Configure structlog
+    structlog.configure(
+        processors=shared_processors
+        + [
+            # Prepare event dict for `ProcessorFormatter`
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        # Logger factory
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        # Cache logger instances for performance
+        cache_logger_on_first_use=True,
+    )
+
+    # Configure processor formatter for standard logging
+    # This makes standard logging calls (logging.info, etc.) also benefit from structlog
+    formatter_processors = [
+        # Remove _record & _from_structlog from event_dict
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+    ]
+
+    # Rich console formatter (human-readable)
+    console_formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=shared_processors,
+        processors=formatter_processors
+        + [
+            structlog.dev.ConsoleRenderer(
+                colors=True,
+                exception_formatter=structlog.dev.RichTracebackFormatter(),
+            ),
+        ],
+    )
+
+    # JSON file formatter (machine-readable)
+    file_formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=shared_processors,
+        processors=formatter_processors + [structlog.processors.JSONRenderer()],
+    )
+
+    # Apply formatters to handlers
+    rich_handler.setFormatter(console_formatter)
+    file_handler.setFormatter(file_formatter)
+
+    # Get a structlog logger
+    logger = structlog.get_logger(app_name)
+
+    # Log initialization
+    logger.info(
+        "logger_initialized",
+        app_name=app_name,
+        log_file=str(log_filename),
+        environment=os.getenv("APP_ENV", "develop"),
+    )
+
+    return logger
 
 
-class LoggerSingleton:
-    _instance = None
+# Singleton instance
+_logger_instance: structlog.stdlib.BoundLogger | None = None
 
-    def __new__(cls, app_name=None):
-        if cls._instance is None:
-            # Create logs directory if it doesn't exist
-            logs_dir = "logs"
-            os.makedirs(logs_dir, exist_ok=True)
 
-            # Generate log filename with date
-            log_filename = os.path.join(
-                logs_dir,
-                f"{datetime.now().strftime('%Y-%m-%d')}.log",
-            )
+def get_logger() -> structlog.stdlib.BoundLogger:
+    """Get or create the singleton logger instance.
 
-            # Determine app name
-            if not app_name:
-                try:
-                    app_name = get_settings().app_name
-                except Exception:
-                    app_name = "app"
+    Returns:
+        Configured structlog logger
+    """
+    global _logger_instance
+    if _logger_instance is None:
+        _logger_instance = setup_structlog()
+    return _logger_instance
 
-            # Set up base logger
-            base_logger = logging.getLogger(app_name)
-            base_logger.setLevel(logging.INFO)
-            base_logger.propagate = False  # avoid duplicate logs
 
-            # Clean previous handlers if any
-            for h in base_logger.handlers:
-                base_logger.removeHandler(h)
-
-            # Console handler with Rich
-            rich_handler = RichHandler(rich_tracebacks=True, markup=True)
-            rich_handler.setLevel(logging.INFO)
-            console_formatter = logging.Formatter(
-                "%(message)s"
-            )  # Rich formats the rest
-            rich_handler.setFormatter(console_formatter)
-            base_logger.addHandler(rich_handler)
-
-            # File handler with JSON formatting
-            file_handler = logging.FileHandler(log_filename, encoding="utf-8")
-            file_handler.setLevel(logging.INFO)
-            file_handler.setFormatter(JSONFormatter())
-            base_logger.addHandler(file_handler)
-
-            cls._instance = base_logger
-
-        return cls._instance
-
-# Create a logger instance
-logger = LoggerSingleton(app_name=get_settings().app_name)  # noqa: F811
+# Create default logger instance for backward compatibility
+logger = get_logger()

@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
-from typing import Tuple
-
 
 DEFAULT_ALGO = "sha256"
 

@@ -5,6 +5,7 @@ A minimal FastAPI application that exposes a simple CRUD API for todos with toke
 ## Documentation
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
 - Project Development Guidelines: [.junie/guidelines.md](./.junie/guidelines.md)
+- Example env file: [.env.example](./.env.example)
 
 ## Overview
 - REST API built with FastAPI
@@ -53,6 +54,15 @@ Install uv on your platform, then install project dependencies:
 - uv sync --frozen
 
 
+## Quickstart
+- Copy .env.example to .env and adjust if needed
+- Install deps: uv sync --frozen
+- Run the app: uv run python run.py
+- Open docs: http://localhost:8000/docs
+- Run tests: uv run pytest -q
+- Docker (full stack incl. Redis, RabbitMQ, PostgreSQL, Prometheus, Grafana, Traefik): docker-compose up --build
+
+
 ## Running locally
 Default dev experience uses uv to run the app with reload.
 
@@ -85,7 +95,10 @@ Core env vars (app behavior):
 - TODO_DB_DIR: directory for the SQLite DB file. Defaults to the settings module directory and will be created if missing.
 - TODO_DB_FILENAME: DB filename; defaults to todos.db. Can be set to :memory: for an in-memory DB.
 - AUTH_DEFAULT_TOKEN: when set, the app ensures an active token row with name=auth_crud_todos using this value; otherwise, a token is generated and logged at startup.
-- TODO: Document any rate limiting exemption configuration if/when implemented.
+- Rate limiting (SlowAPI):
+  - RATE_LIMIT_DEFAULTS: default limits applied globally (e.g., "100/minute"; see .env.example)
+  - RATE_LIMIT_EXEMPT_IPS: IPs exempt from rate limiting (comma-separated; e.g., 127.0.0.1,::1)
+  - RATE_LIMIT_EXEMPT_PATHS: exact paths exempt from rate limiting (e.g., /docs,/redoc,/openapi.json,/metrics)
 
 Database configuration (runtime):
 - DB_ENGINE: database backend (sqlite|mysql|postgresql). Defaults to sqlite for local dev/tests.
@@ -128,10 +141,6 @@ Reverse proxy (Traefik):
 - Access the API via http://localhost (Traefik routes PathPrefix(`/`) to the api_todo service on port 8000, which runs uvicorn via run.py).
 - Traefik dashboard (dev only): http://localhost:8099 (configurable via TRAEFIK_DASHBOARD_PORT in .env; defaults to 8099). If you see a "port is already in use" error from Docker, set TRAEFIK_DASHBOARD_PORT in your .env to any free port (e.g., 18081) and re-run docker-compose.
 - Direct access to the app is also available at http://localhost:8000 (exposed by compose) if needed.
-
-TODO:
-- Provide a sample .env (e.g., .env.example) documenting recommended defaults (APP_ENV, DB_ENGINE/DATABASE_URL, AUTH_DEFAULT_TOKEN, Redis/Postgres settings, TZ, etc.).
-
 
 ## Database and migrations
 - The application auto-creates the schema at startup using SQLAlchemy metadata (see app/shared/db.py). This is convenient for local dev and tests.
@@ -451,3 +460,37 @@ Notes:
 - If you choose MySQL or PostgreSQL, ensure the appropriate async driver is installed: aiomysql or asyncpg.
 - On startup, the application creates tables via SQLAlchemy Base.metadata.create_all for the selected backend.
 - The auth token bootstrap now uses an async path that works across backends.
+
+
+
+## Observabilidad: Prometheus + Grafana
+Este proyecto ya expone métricas Prometheus y ahora incluye un stack de observabilidad listo en docker-compose.
+
+- Endpoint de métricas (Prometheus): `http://localhost:8000/metrics`
+  - Expuesto por la app (FastAPI) y ya scrapeado por Prometheus.
+- Prometheus UI: `http://localhost:${PROMETHEUS_PORT:-9090}` (por defecto 9090)
+- Grafana UI: `http://localhost:${GRAFANA_PORT:-3000}` (por defecto 3000)
+  - Usuario/clave por defecto (solo para dev): `${GRAFANA_ADMIN_USER:-admin}` / `${GRAFANA_ADMIN_PASSWORD:-admin}`
+  - Se provisiona automáticamente un datasource "Prometheus" apuntando a `http://prometheus:9090` dentro de la red de Docker.
+  - Se provisiona automáticamente un dashboard: "FastAPI Todos - Overview" con métricas HTTP y DB.
+
+Cómo levantar todo con Docker (incluyendo observabilidad):
+- `docker-compose up --build`
+
+Archivos relevantes:
+- `docker-compose.yaml`: añade los servicios `prometheus` y `grafana` y los conecta a la red `api_todo_network`.
+- `prometheus.yml`: scrapea `api_todo:8000/metrics` cada 15s.
+- `grafana/provisioning/datasources/datasource.yaml`: datasource Prometheus preconfigurado.
+- `grafana/provisioning/dashboards/dashboards.yaml` y `grafana/provisioning/dashboards/fastapi_todos_overview.json`: dashboard inicial.
+
+Variables de entorno útiles (ver `.env.example`):
+- `TZ` (recomendado definirlo, por ejemplo `America/Caracas`)
+- `PROMETHEUS_PORT` (host) — default 9090
+- `GRAFANA_PORT` (host) — default 3000
+- `TRAEFIK_DASHBOARD_PORT` (host) — default 8099
+- `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` — credenciales del admin de Grafana (cambiar en prod)
+
+Notas:
+- En despliegue local, Prometheus ya está configurado para leer `/metrics` de `api_todo`.
+- Si cambias los puertos en `.env`, recuerda reiniciar docker-compose.
+- El endpoint `/metrics` está exento del rate limiting por defecto (ver `RATE_LIMIT_EXEMPT_PATHS`).

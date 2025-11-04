@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from sqlalchemy import create_engine
-from alembic import context
 import os
+from logging.config import fileConfig
+
+from sqlalchemy import create_engine, pool
+
+from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -19,6 +20,7 @@ if config.config_file_name is not None:
 from app.shared.db import Base  # noqa: E402
 
 target_metadata = Base.metadata
+
 
 # Obtain database URL from environment or fallback to config
 def get_url() -> str:

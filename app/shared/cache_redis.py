@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import os
 import json
-from typing import Any, Optional
+import os
+from typing import Any
+
 from redis import asyncio as aioredis
 
 # Default TTL for cached todos in seconds (can be configured via env)
@@ -14,7 +15,7 @@ def _todo_key(todo_id: int) -> str:
     return f"todos:{todo_id}"
 
 
-async def _cache_get_json(redis_client: aioredis.Redis, key: str) -> Optional[Any]:
+async def _cache_get_json(redis_client: aioredis.Redis, key: str) -> Any | None:
     """Safely get and decode a JSON payload from Redis. Returns None on any error."""
     try:
         value = await redis_client.get(key)

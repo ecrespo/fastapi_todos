@@ -1,28 +1,28 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from redis import asyncio as aioredis
+from secure import Secure
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from secure import Secure
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 
-
-from app.shared.rate_limiter import setup_rate_limiter, limiter
-from app.api.v1.todos import router as todo_router
 from app.api.v1.auth import router as auth_router
-from app.shared.config import get_settings, Environment
-from app.shared.db import init_db_async, ensure_auth_token_async, close_async_connection
-from app.shared.LoggerSingleton import logger
+from app.api.v1.todos import router as todo_router
 from app.middlewares import (
     ErrorHandlingMiddleware,
     LoggingMiddleware,
     ProcessTimeHeaderMiddleware,
+    MetricsMiddleware,
 )
-from redis import asyncio as aioredis
+from app.shared.config import Environment, get_settings
+from app.shared.db import close_async_connection, ensure_auth_token_async, init_db_async
+from app.shared.LoggerSingleton import logger
+from app.shared.rate_limiter import limiter, setup_rate_limiter
 from app.shared.redis_settings import get_redis_client
-
 
 settings = get_settings()
 
@@ -55,13 +55,22 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 if settings.environment == Environment.prod:
     app.add_middleware(HTTPSRedirectMiddleware)
 
-# CORS settings: permissive defaults for tutorial/demo
+# CORS settings: restricted to local development by default
+# Configure via CORS_ORIGINS environment variable for other environments
+cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+cors_methods = [method.strip() for method in settings.cors_allow_methods.split(",") if method.strip()]
+cors_headers = (
+    ["*"]
+    if settings.cors_allow_headers == "*"
+    else [header.strip() for header in settings.cors_allow_headers.split(",") if header.strip()]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=cors_methods,
+    allow_headers=cors_headers,
 )
 
 # GZip compression
@@ -71,11 +80,15 @@ app.add_middleware(GZipMiddleware)
 app.add_middleware(LoggingMiddleware, logger=logger)
 app.add_middleware(ProcessTimeHeaderMiddleware)
 
+# Prometheus HTTP Metrics for todos endpoints
+app.add_middleware(MetricsMiddleware)
+
 # Error handling (outermost)
 app.add_middleware(ErrorHandlingMiddleware, logger=logger)
 
 # Secure headers (outermost)
 secure = Secure.with_default_headers()
+
 
 @app.middleware("http")
 async def set_secure_headers(request, call_next):
@@ -113,14 +126,21 @@ async def health_check():
     return {"status": "ok"}
 
 
-
 @app.get("/redis-check")
+@limiter.limit("60/minute")
 async def test_redis(redis_client: aioredis.Redis = Depends(get_redis_client)):
     # Set a value with a 60-second expiration
     await redis_client.set("my_key", "hello", ex=60)
     # Get the value back
     value = await redis_client.get("my_key")
     return {"my_key": value}
+
+
+@app.get("/metrics")
+async def metrics_endpoint() -> Response:
+    data = generate_latest()
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
 
 app.include_router(todo_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")

@@ -3,20 +3,22 @@ from __future__ import annotations
 import sqlite3
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple, Protocol
+from typing import Protocol
 
 from sqlalchemy import (
-    Enum as SAEnum,
-    String,
-    Integer,
     DateTime,
+    Integer,
+    String,
     Text,
     text,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-from app.shared.config import get_settings, Settings
+from app.shared.config import Settings, get_settings
 
 # Resolve DB path using settings and .env
 _settings = get_settings()
@@ -24,11 +26,9 @@ DB_PATH: Path | str = _settings.db_path
 
 
 class DatabaseStrategy(Protocol):
-    def build_async_url(self) -> str:
-        ...
+    def build_async_url(self) -> str: ...
 
-    def name(self) -> str:
-        ...
+    def name(self) -> str: ...
 
 
 class SQLiteStrategy:
@@ -124,6 +124,7 @@ def _build_database_url(db_path: Path | str) -> str:
     strategy = _get_strategy(_settings, db_path)
     return strategy.build_async_url()
 
+
 DATABASE_URL: str = _build_database_url(DB_PATH)
 
 
@@ -153,7 +154,7 @@ class UserORM(Base):
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[UserRole] = mapped_column(SAEnum(UserRole, name="user_role"), nullable=False)
     active: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
-    created_at: Mapped[Optional[str]] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    created_at: Mapped[str | None] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class TodoORM(Base):
@@ -161,7 +162,7 @@ class TodoORM(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     item: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[Optional[str]] = mapped_column(
+    created_at: Mapped[str | None] = mapped_column(
         DateTime,
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
@@ -171,22 +172,33 @@ class TodoORM(Base):
         nullable=False,
         server_default=text("'pending'"),
     )
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class AuthTokenORM(Base):
     __tablename__ = "auth_tokens"
 
     token: Mapped[str] = mapped_column(String, primary_key=True)
-    name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[Optional[str]] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     active: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
+class RefreshTokenORM(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str | None] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    expires_at: Mapped[str] = mapped_column(DateTime, nullable=False)
+    revoked: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+
 # Async SQLAlchemy engine/session
-_engine: Optional[AsyncEngine] = None
-_SessionFactory: Optional[sessionmaker] = None
+_engine: AsyncEngine | None = None
+_SessionFactory: sessionmaker | None = None
 
 
 def _ensure_engine() -> tuple[AsyncEngine, sessionmaker]:
@@ -202,7 +214,7 @@ def _ensure_engine() -> tuple[AsyncEngine, sessionmaker]:
                 f"Missing database driver for URL '{db_url}'. "
                 f"Install the appropriate driver (e.g., 'aiosqlite' for sqlite, 'aiomysql' for MySQL, 'asyncpg' for PostgreSQL)."
             ) from e
-        except Exception as e:
+        except Exception:
             raise
         _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False, class_=AsyncSession)
     assert _SessionFactory is not None
@@ -228,6 +240,7 @@ def init_db() -> None:
     Also resets the async engine to honor any runtime changes to DB_PATH (used in tests).
     """
     import asyncio
+
     global _engine, _SessionFactory
     # Reset engine/session so that re-pointing DB_PATH takes effect
     _engine = None
@@ -284,14 +297,16 @@ def ensure_auth_token(name: str, token: str | None = None) -> tuple[str, bool]:
         conn.close()
 
 
-async def ensure_auth_token_async(name: str, token: str | None = None) -> Tuple[str, bool]:
+async def ensure_auth_token_async(name: str, token: str | None = None) -> tuple[str, bool]:
     """Async variant implemented with AsyncSession/SQLAlchemy."""
     import secrets
 
     _, factory = _ensure_engine()
     async with factory() as session:
         # Check existing
-        res = await session.execute(text("SELECT token FROM auth_tokens WHERE name = :name AND active = 1 LIMIT 1"), {"name": name})
+        res = await session.execute(
+            text("SELECT token FROM auth_tokens WHERE name = :name AND active = 1 LIMIT 1"), {"name": name}
+        )
         row = res.first()
         if row is not None:
             return row[0], False

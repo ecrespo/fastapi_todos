@@ -1,6 +1,5 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
 
 def test_healthcheck(client: TestClient):
     # Prefer using the shared client fixture for DB setup, though DB not required here

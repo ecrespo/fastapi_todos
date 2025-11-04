@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
 import os
 import tempfile
 from datetime import datetime
@@ -8,10 +7,10 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
+import app.api.v1.todos as todos_module
 from app.main import app
 from app.models.RequestsTodos import Todo
 from app.services.todo_service import TodoService
-import app.api.v1.todos as todos_module
 from app.shared import db as dbmod
 from app.shared.db import init_db
 
@@ -19,17 +18,17 @@ from app.shared.db import init_db
 class MockRepository:
     def __init__(self) -> None:
         # store maps id to a tuple (item, status, created_at)
-        self._store: Dict[int, tuple[str, str, datetime]] = {}
+        self._store: dict[int, tuple[str, str, datetime]] = {}
 
     # Repository interface
-    def get_all(self) -> List[Todo]:
-        todos: List[Todo] = []
+    def get_all(self) -> list[Todo]:
+        todos: list[Todo] = []
         for k in sorted(self._store.keys()):
             item, status, created_at = self._store[k]
             todos.append(Todo(id=k, item=item, status=status, created_at=created_at))
         return todos
 
-    def get_by_id(self, todo_id: int) -> Optional[Todo]:
+    def get_by_id(self, todo_id: int) -> Todo | None:
         if todo_id in self._store:
             item, status, created_at = self._store[todo_id]
             return Todo(id=todo_id, item=item, status=status, created_at=created_at)
@@ -38,7 +37,7 @@ class MockRepository:
     def create(self, todo: Todo) -> None:
         self._store[todo.id] = (todo.item, str(todo.status), todo.created_at or datetime.now())
 
-    def update(self, todo_id: int, todo: Todo) -> Optional[Todo]:
+    def update(self, todo_id: int, todo: Todo) -> Todo | None:
         if todo_id not in self._store:
             return None
         _, _, created_at = self._store[todo_id]
@@ -72,7 +71,9 @@ def unit_client(mocked_service) -> TestClient:  # type: ignore[override]
         init_db()
         conn = dbmod.get_connection()
         try:
-            conn.execute("INSERT INTO auth_tokens (token, name, active) VALUES (?, ?, 1)", ("test-token", "pytest-unit"))
+            conn.execute(
+                "INSERT INTO auth_tokens (token, name, active) VALUES (?, ?, 1)", ("test-token", "pytest-unit")
+            )
             conn.commit()
         finally:
             conn.close()

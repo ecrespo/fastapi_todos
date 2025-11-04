@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -22,8 +21,8 @@ class Todo(BaseModel):
     id: int
     item: str
     status: TodoStatus = TodoStatus.pending
-    created_at: Optional[datetime] = None
-    user_id: Optional[int] = None
+    created_at: datetime | None = None
+    user_id: int | None = None
 
     @field_validator("status", mode="before")
     @classmethod

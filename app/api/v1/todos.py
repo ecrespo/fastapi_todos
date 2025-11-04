@@ -1,18 +1,17 @@
-from typing import Dict, List
-
-from fastapi import APIRouter, Security, Depends, Query, status, HTTPException
-
-from app.shared.rate_limiter import limiter
-from app.models.RequestsTodos import Todo
-from app.models.ResponseTodos import PaginatedTodos, TodoResponse, MessageResponse, TaskEnqueuedResponse
-from app.shared.messages import NOTFOUND, DELETED, UPDATED, CREATED
-from app.services.todo_service import TodoService
-from redis import asyncio as aioredis
-from app.shared.redis_settings import get_redis_client
 import math
-from app.shared.auth import api_verifier, editor_required, admin_required, get_user_id_for_token, is_admin_token
-from app.shared.cache_redis import _todo_key, _cache_get_json, _cache_set_json, _cache_delete
-from app.shared.config import get_settings
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
+from redis import asyncio as aioredis
+
+from app.models.RequestsTodos import Todo
+from app.models.ResponseTodos import MessageResponse, PaginatedTodos, TaskEnqueuedResponse, TodoResponse
+from app.services.todo_service import TodoService
+from app.shared.auth import admin_required, api_verifier, editor_required, get_user_id_for_token, is_admin_token
+from app.shared.cache_redis import _cache_delete, _cache_get_json, _cache_set_json, _todo_key
+from app.shared.messages import CREATED, DELETED, NOTFOUND
+from app.shared.rate_limiter import limiter
+from app.shared.redis_settings import get_redis_client
+
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 service = TodoService()
@@ -21,10 +20,7 @@ KEY_ALL_TODOS = "todos:all"
 
 
 @router.get(
-    "/",
-    response_model=PaginatedTodos,
-    status_code=status.HTTP_200_OK,
-    summary="Retrieve a paginated list of todos."
+    "/", response_model=PaginatedTodos, status_code=status.HTTP_200_OK, summary="Retrieve a paginated list of todos."
 )
 @limiter.limit("5/minute")
 async def get_todos(
@@ -32,7 +28,7 @@ async def get_todos(
     size: int = Query(10, ge=1, le=100, description="Page size (1-100)"),
     token: str = Security(api_verifier),
     redis_client: aioredis.Redis = Depends(get_redis_client),
-) -> Dict[str, List[Todo]]:
+) -> dict[str, list[Todo]]:
     """
     Retrieve a paginated list of todos.
 
@@ -76,10 +72,12 @@ async def get_todos(
     "/{todo_id}",
     response_model=TodoResponse | MessageResponse,
     status_code=status.HTTP_200_OK,
-    summary="Retrieve a specific to-do item by its ID."
+    summary="Retrieve a specific to-do item by its ID.",
 )
 @limiter.limit("5/minute")
-async def get_todo(todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
+async def get_todo(
+    todo_id: int, token: str = Security(api_verifier), redis_client: aioredis.Redis = Depends(get_redis_client)
+) -> dict[str, Todo | str]:
     """
     Retrieves a specific to-do item by its ID. Searches through the
     list of to-do items and returns the item if found. If the item
@@ -103,7 +101,7 @@ async def get_todo(todo_id: int, token: str = Security(api_verifier), redis_clie
         try:
             await _cache_set_json(redis_client, key, todo.model_dump(mode="json"))
         except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
         return {"todo": todo}
 
     return {"message": NOTFOUND}
@@ -118,14 +116,14 @@ async def _create_todo_internal(todo_dict: dict) -> None:
     await _cache_delete(redis_client, KEY_ALL_TODOS, _todo_key(todo.id))
 
 
-@router.post(
-    "/",
-    response_model=MessageResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Create a new todo item."
-)
+@router.post("/", response_model=MessageResponse, status_code=status.HTTP_200_OK, summary="Create a new todo item.")
 @limiter.limit("5/minute")
-async def create_todo(todo: Todo, token: str = Security(api_verifier), _: None = Depends(editor_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
+async def create_todo(
+    todo: Todo,
+    token: str = Security(api_verifier),
+    _: None = Depends(editor_required),
+    redis_client: aioredis.Redis = Depends(get_redis_client),
+) -> dict[str, str]:
     """
     Handles the creation of a new todo item and appends it to the existing list of todos.
 
@@ -151,12 +149,13 @@ async def create_todo(todo: Todo, token: str = Security(api_verifier), _: None =
     "/async",
     response_model=TaskEnqueuedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Enqueue a Celery task to create a new todo item."
+    summary="Enqueue a Celery task to create a new todo item.",
 )
 @limiter.limit("5/minute")
-async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> Dict[str, str]:
+async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> dict[str, str]:
     # Import task lazily to avoid heavy imports at module import time
     import os
+
     from app.tasks.todo_tasks import create_todo_task
 
     # Resolve user_id from token and include in payload
@@ -173,11 +172,12 @@ async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> 
     if eager:
         # Run inline using the same internal async flow used by the task
         from app.api.v1.todos import _create_todo_internal  # circular-safe import
+
         await _create_todo_internal(payload)
         task_id = "eager"
     else:
         # Import celery app lazily to avoid initializing it when not needed
-        from app.shared.celery_app import celery_app
+
         result = create_todo_task.delay(payload)
         task_id = result.id
     # Respond with task id so clients can track it (if a result backend is used)
@@ -188,10 +188,16 @@ async def create_todo_async(todo: Todo, token: str = Security(api_verifier)) -> 
     "/{todo_id}",
     response_model=TodoResponse | MessageResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update an existing todo item by its ID."
+    summary="Update an existing todo item by its ID.",
 )
 @limiter.limit("5/minute")
-async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_verifier), _: None = Depends(editor_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, Todo | str]:
+async def update_todo(
+    todo_id: int,
+    todo_obj: Todo,
+    token: str = Security(api_verifier),
+    _: None = Depends(editor_required),
+    redis_client: aioredis.Redis = Depends(get_redis_client),
+) -> dict[str, Todo | str]:
     """
     Updates an existing todo item identified by its ID. This function iterates
     through the list of todos to find a matching ID, then updates the title
@@ -213,21 +219,25 @@ async def update_todo(todo_id: int, todo_obj: Todo, token: str = Security(api_ve
         try:
             await _cache_set_json(redis_client, _todo_key(todo_id), updated.model_dump(mode="json"))
         except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
         await _cache_delete(redis_client, KEY_ALL_TODOS)
         return {"todo": updated}
     return {"message": NOTFOUND}
-
 
 
 @router.delete(
     "/{todo_id}",
     response_model=MessageResponse,
     status_code=status.HTTP_200_OK,
-    summary="Delete a specific todo item by its ID."
+    summary="Delete a specific todo item by its ID.",
 )
 @limiter.limit("5/minute")
-async def delete_todo(todo_id: int, token: str = Security(api_verifier), _: None = Depends(admin_required), redis_client: aioredis.Redis = Depends(get_redis_client)) -> Dict[str, str]:
+async def delete_todo(
+    todo_id: int,
+    token: str = Security(api_verifier),
+    _: None = Depends(admin_required),
+    redis_client: aioredis.Redis = Depends(get_redis_client),
+) -> dict[str, str]:
     """
     Deletes a specific todo item by its unique identifier.
 
@@ -248,4 +258,3 @@ async def delete_todo(todo_id: int, token: str = Security(api_verifier), _: None
         return {"message": DELETED}
 
     return {"message": NOTFOUND}
-
