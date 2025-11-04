@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     celery_result_backend: str = Field(default="rpc://", alias="CELERY_RESULT_BACKEND")
     celery_task_always_eager: bool = Field(default=False, alias="CELERY_TASK_ALWAYS_EAGER")
 
+    # JWT configuration
+    jwt_secret_key: str = Field(
+        default="change-this-to-a-secure-random-key-in-production-min-32-chars",
+        alias="JWT_SECRET_KEY"
+    )
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_expiration_minutes: int = Field(default=43200, alias="JWT_EXPIRATION_MINUTES")  # 30 days
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         case_sensitive=False,

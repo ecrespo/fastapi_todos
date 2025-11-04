@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from uuid import uuid4
-
 from fastapi import APIRouter, HTTPException, status, Depends, Security
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select, func
@@ -10,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.shared.db import get_async_session, UserORM, AuthTokenORM, UserRole
 from app.shared.security import verify_password, hash_password
 from app.shared.auth import api_verifier, admin_required, get_user_id_for_token
+from app.shared.jwt_utils import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"]) 
 
@@ -70,17 +69,30 @@ async def login(payload: LoginRequest) -> TokenResponse:
     async with (await get_async_session()) as session:
         # Find active user by username
         res = await session.execute(
-            select(UserORM.id, UserORM.password_hash, UserORM.active).where(UserORM.username == payload.username).limit(1)
+            select(UserORM.id, UserORM.username, UserORM.password_hash, UserORM.active, UserORM.role)
+            .where(UserORM.username == payload.username)
+            .limit(1)
         )
         row = res.first()
         if not row:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
-        user_id, password_hash, active = row
+        user_id, username, password_hash, active, role = row
         if not active or not verify_password(payload.password, password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
-        # Issue a token and persist it linked to the user
-        token = uuid4().hex
-        session.add(AuthTokenORM(token=token, name=f"user:{payload.username}", user_id=user_id, active=1))
+
+        # Create JWT token with user information
+        role_str = getattr(role, "value", str(role))
+        token = create_access_token(
+            data={
+                "sub": username,
+                "user_id": user_id,
+                "role": role_str
+            }
+        )
+
+        # Optionally persist token for tracking/revocation (JWT hash or full token)
+        # For now, we store it to maintain compatibility with existing auth flow
+        session.add(AuthTokenORM(token=token, name=f"user:{username}", user_id=user_id, active=1))
         await session.commit()
         return TokenResponse(access_token=token)
 
