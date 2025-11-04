@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/), and this project adheres to Semantic Versioning (https://semver.org/).
 
+## [0.4.1] - 2025-11-04
+Inferred bump: patch (infrastructure/docs updates; no breaking changes)
+
+### Added
+- Integrate Traefik as reverse proxy and update docker-compose services for local development. [bda5353](https://github.com/ecrespo/fastapi_todos/commit/bda5353)
+
+### Changed
+- Strengthened RBAC enforcement and refreshed tests/coverage. [7ca23c9](https://github.com/ecrespo/fastapi_todos/commit/7ca23c9)
+
+### Fixed
+- No user-facing fixes in this release.
+
+### Deprecated
+- None.
+
+### Removed
+- None.
+
+### Security
+- No security-related changes in this release.
+
+
 ## [0.4.0] - 2025-10-21
 Inferred bump: minor (new features; no breaking changes detected)
 
