@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
-from app.shared.LoggerSingleton import logger
+
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Simple request/response logger with latency measurement."""

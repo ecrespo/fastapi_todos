@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
 import secrets
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import jwt
 from jwt.exceptions import InvalidTokenError
@@ -10,10 +10,7 @@ from jwt.exceptions import InvalidTokenError
 from app.shared.config import get_settings
 
 
-def create_access_token(
-    data: Dict[str, Any],
-    expires_delta: Optional[timedelta] = None
-) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token.
 
     Args:
@@ -27,21 +24,13 @@ def create_access_token(
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
 
-    to_encode.update({
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-        "type": "access"
-    })
+    to_encode.update({"exp": expire, "iat": datetime.now(UTC), "type": "access"})
 
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm
-    )
+    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
     return encoded_jwt
 
@@ -60,12 +49,12 @@ def create_refresh_token(user_id: int) -> tuple[str, datetime]:
     token = secrets.token_urlsafe(32)
 
     # Calculate expiration
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_token_expire_days)
+    expires_at = datetime.now(UTC) + timedelta(days=settings.jwt_refresh_token_expire_days)
 
     return token, expires_at
 
 
-def verify_token(token: str) -> Optional[Dict[str, Any]]:
+def verify_token(token: str) -> dict[str, Any] | None:
     """Verify and decode a JWT token.
 
     Args:
@@ -77,17 +66,13 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
     settings = get_settings()
 
     try:
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm]
-        )
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         return payload
     except InvalidTokenError:
         return None
 
 
-def get_token_user_id(token: str) -> Optional[int]:
+def get_token_user_id(token: str) -> int | None:
     """Extract user_id from a JWT token.
 
     Args:
@@ -102,7 +87,7 @@ def get_token_user_id(token: str) -> Optional[int]:
     return payload.get("user_id")
 
 
-def get_token_username(token: str) -> Optional[str]:
+def get_token_username(token: str) -> str | None:
     """Extract username from a JWT token.
 
     Args:

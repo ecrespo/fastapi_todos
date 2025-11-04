@@ -1,9 +1,9 @@
-import sys
-import os
 import json
 import logging
+import os
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
+
 from rich.logging import RichHandler
 
 from app.shared.config import get_settings
@@ -13,7 +13,7 @@ class JSONFormatter(logging.Formatter):
     """Simple JSON formatter for logging records."""
 
     def format(self, record: logging.LogRecord) -> str:
-        log: Dict[str, Any] = {
+        log: dict[str, Any] = {
             "time": datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
             "level": record.levelname,
             "logger": record.name,
@@ -61,9 +61,7 @@ class LoggerSingleton:
             # Console handler with Rich
             rich_handler = RichHandler(rich_tracebacks=True, markup=True)
             rich_handler.setLevel(logging.INFO)
-            console_formatter = logging.Formatter(
-                "%(message)s"
-            )  # Rich formats the rest
+            console_formatter = logging.Formatter("%(message)s")  # Rich formats the rest
             rich_handler.setFormatter(console_formatter)
             base_logger.addHandler(rich_handler)
 
@@ -76,6 +74,7 @@ class LoggerSingleton:
             cls._instance = base_logger
 
         return cls._instance
+
 
 # Create a logger instance
 logger = LoggerSingleton(app_name=get_settings().app_name)  # noqa: F811

@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import logging
-import traceback
-from typing import Callable
-
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.shared.config import get_settings
-from app.shared.LoggerSingleton import logger
+
 
 class ErrorHandlingMiddleware(BaseHTTPMiddleware):
     """

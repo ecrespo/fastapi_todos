@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Optional
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from redis import asyncio as aioredis
 
 
@@ -39,7 +38,8 @@ def get_redis_settings() -> RedisSettings:
 
 
 # A lightweight, lazily-initialized singleton Redis client for DI
-_cached_client: Optional[aioredis.Redis] = None
+_cached_client: aioredis.Redis | None = None
+
 
 def get_redis_client() -> aioredis.Redis:
     """

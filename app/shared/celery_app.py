@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from celery import Celery
+
 from app.shared.config import get_settings
 
 

@@ -1,4 +1,3 @@
-from typing import List, Optional
 from datetime import datetime
 
 from sqlalchemy import text
@@ -13,7 +12,7 @@ class TodoRepository:
     Connections are managed centrally at app shutdown.
     """
 
-    async def get_all(self) -> List[Todo]:
+    async def get_all(self) -> list[Todo]:
         async with await get_async_session() as session:
             res = await session.execute(text("SELECT id, item, status, created_at, user_id FROM todos ORDER BY id ASC"))
             rows = res.fetchall()
@@ -22,7 +21,7 @@ class TodoRepository:
                 for row in rows
             ]
 
-    async def get_paginated(self, offset: int, limit: int, user_id: Optional[int] = None) -> tuple[List[Todo], int]:
+    async def get_paginated(self, offset: int, limit: int, user_id: int | None = None) -> tuple[list[Todo], int]:
         """Return a page slice and the total count.
         If user_id is provided, restrict results to that user's todos.
         """
@@ -60,7 +59,7 @@ class TodoRepository:
             ]
             return items, total
 
-    async def get_by_id(self, todo_id: int) -> Optional[Todo]:
+    async def get_by_id(self, todo_id: int) -> Todo | None:
         async with await get_async_session() as session:
             res = await session.execute(
                 text("SELECT id, item, status, created_at, user_id FROM todos WHERE id = :id"),
@@ -79,17 +78,17 @@ class TodoRepository:
                 {
                     "id": todo.id,
                     "item": todo.item,
-                    "status": getattr(todo.status, 'value', todo.status),
+                    "status": getattr(todo.status, "value", todo.status),
                     "user_id": todo.user_id,
                 },
             )
             await session.commit()
 
-    async def update(self, todo_id: int, todo: Todo) -> Optional[Todo]:
+    async def update(self, todo_id: int, todo: Todo) -> Todo | None:
         async with await get_async_session() as session:
             res = await session.execute(
                 text("UPDATE todos SET item = :item, status = :status WHERE id = :id"),
-                {"item": todo.item, "status": getattr(todo.status, 'value', todo.status), "id": todo_id},
+                {"item": todo.item, "status": getattr(todo.status, "value", todo.status), "id": todo_id},
             )
             await session.commit()
             if (res.rowcount or 0) == 0:
@@ -110,7 +109,7 @@ class TodoRepository:
             return (res.rowcount or 0) > 0
 
 
-def _parse_dt(value) -> Optional[datetime]:
+def _parse_dt(value) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, datetime):

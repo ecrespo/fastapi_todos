@@ -1,17 +1,16 @@
 import os
-from typing import Set, Callable, Any
+from collections.abc import Callable
+from typing import Any
 
 try:
-    from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_remote_address
-    from slowapi.errors import RateLimitExceeded
     from fastapi import FastAPI
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
 
     # Comma-separated list of IPs that should be exempt from rate limiting
     # Example: RATE_LIMIT_EXEMPT_IPS="127.0.0.1,192.168.1.10"
-    _EXEMPT_IPS: Set[str] = {
-        ip.strip() for ip in os.getenv("RATE_LIMIT_EXEMPT_IPS", "").split(",") if ip.strip()
-    }
+    _EXEMPT_IPS: set[str] = {ip.strip() for ip in os.getenv("RATE_LIMIT_EXEMPT_IPS", "").split(",") if ip.strip()}
 
     # Global limiter instance for the application
     limiter = Limiter(key_func=get_remote_address)
@@ -40,6 +39,7 @@ except Exception:
         def limit(self, _spec: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
             def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
                 return func
+
             return decorator
 
         def request_filter(self, _func: Callable[..., Any]) -> Callable[..., Any]:

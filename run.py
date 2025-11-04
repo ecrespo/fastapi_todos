@@ -1,5 +1,8 @@
-import uvicorn
 import os
+
+import uvicorn
+
+
 def main() -> None:
     """
     Start the FastAPI app using uvicorn, pointing to fastapi_project.main:app.

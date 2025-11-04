@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+
 def test_register_then_login(client: TestClient):
     # Register a new user
     reg = client.post(

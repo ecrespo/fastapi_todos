@@ -1,14 +1,12 @@
+import contextlib
 import os
 import sys
 import tempfile
-import contextlib
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
-
 
 import pytest
 from fastapi.testclient import TestClient
-
 
 # Ensure project root is on sys.path for package imports
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +32,7 @@ def temp_db_path() -> Generator[str, None, None]:
             os.remove(path)
         except FileNotFoundError:
             pass
+
 
 @pytest.fixture(scope="module")
 def client() -> Generator[TestClient, None, None]:

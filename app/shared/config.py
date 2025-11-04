@@ -3,11 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
 
 
 class Environment(str, Enum):
@@ -17,7 +16,7 @@ class Environment(str, Enum):
     prod = "prod"
 
 
-def _resolve_env_file(env: str | Environment | None) -> Optional[str]:
+def _resolve_env_file(env: str | Environment | None) -> str | None:
     # Priority: explicit APP_ENV/ENVIRONMENT-specific file -> generic .env
     # e.g., .env.develop, .env.staging, .env.qa, .env.prod
     env_name = str(env or "").strip().lower()
@@ -68,8 +67,7 @@ class Settings(BaseSettings):
 
     # JWT configuration
     jwt_secret_key: str = Field(
-        default="change-this-to-a-secure-random-key-in-production-min-32-chars",
-        alias="JWT_SECRET_KEY"
+        default="change-this-to-a-secure-random-key-in-production-min-32-chars", alias="JWT_SECRET_KEY"
     )
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_access_token_expire_minutes: int = Field(default=30, alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")  # 30 minutes
@@ -78,7 +76,7 @@ class Settings(BaseSettings):
     # CORS configuration
     cors_origins: str = Field(
         default="http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000",
-        alias="CORS_ORIGINS"
+        alias="CORS_ORIGINS",
     )
     cors_allow_credentials: bool = Field(default=True, alias="CORS_ALLOW_CREDENTIALS")
     cors_allow_methods: str = Field(default="GET,POST,PUT,DELETE,PATCH,OPTIONS", alias="CORS_ALLOW_METHODS")

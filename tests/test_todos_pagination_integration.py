@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 
 def _create_many(client: TestClient, n: int, start: int = 1) -> None:

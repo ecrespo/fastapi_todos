@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, Any
+from typing import Any
 
 from app.shared.celery_app import celery_app
 
 
 @celery_app.task(name="todos.create_todo")
-def create_todo_task(todo_data: Dict[str, Any]) -> Dict[str, Any]:
+def create_todo_task(todo_data: dict[str, Any]) -> dict[str, Any]:
     """
     Celery task to create a Todo item using the same service logic as the API.
     Runs the async create flow in a fresh event loop. Returns a minimal payload.
