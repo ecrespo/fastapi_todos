@@ -55,13 +55,20 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 if settings.environment == Environment.prod:
     app.add_middleware(HTTPSRedirectMiddleware)
 
-# CORS settings: permissive defaults for tutorial/demo
+# CORS settings: restricted to local development by default
+# Configure via CORS_ORIGINS environment variable for other environments
+cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+cors_methods = [method.strip() for method in settings.cors_allow_methods.split(",") if method.strip()]
+cors_headers = ["*"] if settings.cors_allow_headers == "*" else [
+    header.strip() for header in settings.cors_allow_headers.split(",") if header.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=cors_methods,
+    allow_headers=cors_headers,
 )
 
 # GZip compression

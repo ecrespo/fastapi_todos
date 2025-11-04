@@ -184,6 +184,17 @@ class AuthTokenORM(Base):
     active: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
+class RefreshTokenORM(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[Optional[str]] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    expires_at: Mapped[str] = mapped_column(DateTime, nullable=False)
+    revoked: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+
 # Async SQLAlchemy engine/session
 _engine: Optional[AsyncEngine] = None
 _SessionFactory: Optional[sessionmaker] = None

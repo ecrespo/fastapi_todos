@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
+import secrets
 
 import jwt
 from jwt.exceptions import InvalidTokenError
@@ -28,11 +29,12 @@ def create_access_token(
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expiration_minutes)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
 
     to_encode.update({
         "exp": expire,
-        "iat": datetime.now(timezone.utc)
+        "iat": datetime.now(timezone.utc),
+        "type": "access"
     })
 
     encoded_jwt = jwt.encode(
@@ -42,6 +44,25 @@ def create_access_token(
     )
 
     return encoded_jwt
+
+
+def create_refresh_token(user_id: int) -> tuple[str, datetime]:
+    """Create a refresh token.
+
+    Args:
+        user_id: The user ID for which to create the refresh token
+
+    Returns:
+        Tuple of (token string, expiration datetime)
+    """
+    settings = get_settings()
+    # Generate a random secure token
+    token = secrets.token_urlsafe(32)
+
+    # Calculate expiration
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_token_expire_days)
+
+    return token, expires_at
 
 
 def verify_token(token: str) -> Optional[Dict[str, Any]]:

@@ -72,7 +72,17 @@ class Settings(BaseSettings):
         alias="JWT_SECRET_KEY"
     )
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    jwt_expiration_minutes: int = Field(default=43200, alias="JWT_EXPIRATION_MINUTES")  # 30 days
+    jwt_access_token_expire_minutes: int = Field(default=30, alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")  # 30 minutes
+    jwt_refresh_token_expire_days: int = Field(default=30, alias="JWT_REFRESH_TOKEN_EXPIRE_DAYS")  # 30 days
+
+    # CORS configuration
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000",
+        alias="CORS_ORIGINS"
+    )
+    cors_allow_credentials: bool = Field(default=True, alias="CORS_ALLOW_CREDENTIALS")
+    cors_allow_methods: str = Field(default="GET,POST,PUT,DELETE,PATCH,OPTIONS", alias="CORS_ALLOW_METHODS")
+    cors_allow_headers: str = Field(default="*", alias="CORS_ALLOW_HEADERS")
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

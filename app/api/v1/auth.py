@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, status, Depends, Security
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 
-from app.shared.db import get_async_session, UserORM, AuthTokenORM, UserRole
+from app.shared.db import get_async_session, UserORM, AuthTokenORM, UserRole, RefreshTokenORM
 from app.shared.security import verify_password, hash_password
 from app.shared.auth import api_verifier, admin_required, get_user_id_for_token
-from app.shared.jwt_utils import create_access_token
+from app.shared.jwt_utils import create_access_token, create_refresh_token
 
 router = APIRouter(prefix="/auth", tags=["auth"]) 
 
@@ -22,7 +24,9 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+    expires_in: int  # seconds until access token expires
 
 
 class CreateUserRequest(BaseModel):
@@ -66,6 +70,9 @@ async def register_user(payload: CreateUserRequest) -> CreatedUserResponse:
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def login(payload: LoginRequest) -> TokenResponse:
+    from app.shared.config import get_settings
+    settings = get_settings()
+
     async with (await get_async_session()) as session:
         # Find active user by username
         res = await session.execute(
@@ -80,9 +87,9 @@ async def login(payload: LoginRequest) -> TokenResponse:
         if not active or not verify_password(payload.password, password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
 
-        # Create JWT token with user information
+        # Create JWT access token with user information
         role_str = getattr(role, "value", str(role))
-        token = create_access_token(
+        access_token = create_access_token(
             data={
                 "sub": username,
                 "user_id": user_id,
@@ -90,11 +97,23 @@ async def login(payload: LoginRequest) -> TokenResponse:
             }
         )
 
-        # Optionally persist token for tracking/revocation (JWT hash or full token)
-        # For now, we store it to maintain compatibility with existing auth flow
-        session.add(AuthTokenORM(token=token, name=f"user:{username}", user_id=user_id, active=1))
+        # Create refresh token
+        refresh_token, expires_at = create_refresh_token(user_id)
+
+        # Store only refresh token in database (JWT access tokens are self-contained)
+        session.add(RefreshTokenORM(
+            token=refresh_token,
+            user_id=user_id,
+            expires_at=expires_at,
+            revoked=0
+        ))
         await session.commit()
-        return TokenResponse(access_token=token)
+
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=settings.jwt_access_token_expire_minutes * 60  # convert to seconds
+        )
 
 
 # ===== Users management endpoints =====
@@ -204,3 +223,103 @@ async def update_user_password(
         await session.commit()
 
     return MessageResponse(message="password updated")
+
+
+# ===== Refresh token endpoint =====
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+async def refresh_token_endpoint(payload: RefreshTokenRequest) -> TokenResponse:
+    """Refresh an access token using a valid refresh token."""
+    from app.shared.config import get_settings
+    settings = get_settings()
+
+    async with (await get_async_session()) as session:
+        # Validate refresh token
+        res = await session.execute(
+            select(
+                RefreshTokenORM.user_id,
+                RefreshTokenORM.expires_at,
+                RefreshTokenORM.revoked
+            )
+            .where(RefreshTokenORM.token == payload.refresh_token)
+            .limit(1)
+        )
+        row = res.first()
+
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token"
+            )
+
+        user_id, expires_at_str, revoked = row
+
+        # Check if token is revoked
+        if revoked:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token has been revoked"
+            )
+
+        # Check if token is expired
+        expires_at = datetime.fromisoformat(expires_at_str) if isinstance(expires_at_str, str) else expires_at_str
+        if datetime.now(timezone.utc) > expires_at.replace(tzinfo=timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token has expired"
+            )
+
+        # Get user information
+        user_res = await session.execute(
+            select(UserORM.username, UserORM.role, UserORM.active)
+            .where(UserORM.id == user_id)
+            .limit(1)
+        )
+        user_row = user_res.first()
+
+        if not user_row or not user_row[2]:  # Check active status
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive"
+            )
+
+        username, role, active = user_row
+        role_str = getattr(role, "value", str(role))
+
+        # Generate new access token
+        access_token = create_access_token(
+            data={
+                "sub": username,
+                "user_id": user_id,
+                "role": role_str
+            }
+        )
+
+        # Generate new refresh token (rotate refresh tokens for security)
+        new_refresh_token, new_expires_at = create_refresh_token(user_id)
+
+        # Revoke old refresh token
+        old_token_obj = await session.execute(
+            select(RefreshTokenORM).where(RefreshTokenORM.token == payload.refresh_token)
+        )
+        old_token = old_token_obj.scalar_one_or_none()
+        if old_token:
+            old_token.revoked = 1
+
+        # Store new refresh token (JWT access tokens are self-contained, no need to store)
+        session.add(RefreshTokenORM(
+            token=new_refresh_token,
+            user_id=user_id,
+            expires_at=new_expires_at,
+            revoked=0
+        ))
+        await session.commit()
+
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=new_refresh_token,
+            expires_in=settings.jwt_access_token_expire_minutes * 60
+        )
