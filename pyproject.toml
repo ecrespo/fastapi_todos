@@ -21,6 +21,8 @@ dependencies = [
     "redis>=5.0.0",
     "celery>=5.4,<6",
     "pyjwt>=2.8.0",
+    "structlog>=25.5.0",
+    "colorama>=0.4.6",
 ]
 
 [dependency-groups]
