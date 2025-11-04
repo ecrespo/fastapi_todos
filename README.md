@@ -5,6 +5,7 @@ A minimal FastAPI application that exposes a simple CRUD API for todos with toke
 ## Documentation
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
 - Project Development Guidelines: [.junie/guidelines.md](./.junie/guidelines.md)
+- Example env file: [.env.example](./.env.example)
 
 ## Overview
 - REST API built with FastAPI
@@ -53,6 +54,15 @@ Install uv on your platform, then install project dependencies:
 - uv sync --frozen
 
 
+## Quickstart
+- Copy .env.example to .env and adjust if needed
+- Install deps: uv sync --frozen
+- Run the app: uv run python run.py
+- Open docs: http://localhost:8000/docs
+- Run tests: uv run pytest -q
+- Docker (full stack incl. Redis, RabbitMQ, PostgreSQL, Prometheus, Grafana, Traefik): docker-compose up --build
+
+
 ## Running locally
 Default dev experience uses uv to run the app with reload.
 
@@ -85,7 +95,10 @@ Core env vars (app behavior):
 - TODO_DB_DIR: directory for the SQLite DB file. Defaults to the settings module directory and will be created if missing.
 - TODO_DB_FILENAME: DB filename; defaults to todos.db. Can be set to :memory: for an in-memory DB.
 - AUTH_DEFAULT_TOKEN: when set, the app ensures an active token row with name=auth_crud_todos using this value; otherwise, a token is generated and logged at startup.
-- TODO: Document any rate limiting exemption configuration if/when implemented.
+- Rate limiting (SlowAPI):
+  - RATE_LIMIT_DEFAULTS: default limits applied globally (e.g., "100/minute"; see .env.example)
+  - RATE_LIMIT_EXEMPT_IPS: IPs exempt from rate limiting (comma-separated; e.g., 127.0.0.1,::1)
+  - RATE_LIMIT_EXEMPT_PATHS: exact paths exempt from rate limiting (e.g., /docs,/redoc,/openapi.json,/metrics)
 
 Database configuration (runtime):
 - DB_ENGINE: database backend (sqlite|mysql|postgresql). Defaults to sqlite for local dev/tests.
@@ -128,10 +141,6 @@ Reverse proxy (Traefik):
 - Access the API via http://localhost (Traefik routes PathPrefix(`/`) to the api_todo service on port 8000, which runs uvicorn via run.py).
 - Traefik dashboard (dev only): http://localhost:8099 (configurable via TRAEFIK_DASHBOARD_PORT in .env; defaults to 8099). If you see a "port is already in use" error from Docker, set TRAEFIK_DASHBOARD_PORT in your .env to any free port (e.g., 18081) and re-run docker-compose.
 - Direct access to the app is also available at http://localhost:8000 (exposed by compose) if needed.
-
-TODO:
-- Provide a sample .env (e.g., .env.example) documenting recommended defaults (APP_ENV, DB_ENGINE/DATABASE_URL, AUTH_DEFAULT_TOKEN, Redis/Postgres settings, TZ, etc.).
-
 
 ## Database and migrations
 - The application auto-creates the schema at startup using SQLAlchemy metadata (see app/shared/db.py). This is convenient for local dev and tests.
