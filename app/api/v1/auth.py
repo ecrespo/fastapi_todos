@@ -11,6 +11,7 @@ from app.shared.auth import admin_required, api_verifier
 from app.shared.db import AuthTokenORM, RefreshTokenORM, UserORM, UserRole, get_async_session
 from app.shared.jwt_utils import create_access_token, create_refresh_token
 from app.shared.security import hash_password, verify_password
+from app.shared.rate_limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +46,7 @@ class CreatedUserResponse(BaseModel):
 
 
 @router.post("/register", response_model=CreatedUserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def register_user(payload: CreateUserRequest) -> CreatedUserResponse:
     if payload.password != payload.confirm_password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Passwords do not match")
@@ -69,6 +71,7 @@ async def register_user(payload: CreateUserRequest) -> CreatedUserResponse:
 
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
 async def login(payload: LoginRequest) -> TokenResponse:
     from app.shared.config import get_settings
 
@@ -126,6 +129,7 @@ class MessageResponse(BaseModel):
 
 
 @router.get("/users", response_model=UsersListResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("60/minute")
 async def list_users(_: None = Depends(admin_required)) -> UsersListResponse:
     async with await get_async_session() as session:
         res = await session.execute(select(UserORM.id, UserORM.username, UserORM.role, UserORM.active))
@@ -140,6 +144,7 @@ async def list_users(_: None = Depends(admin_required)) -> UsersListResponse:
 
 
 @router.get("/users/{user_id}", response_model=UserSummary, status_code=status.HTTP_200_OK)
+@limiter.limit("60/minute")
 async def get_user(user_id: int, _: None = Depends(admin_required)) -> UserSummary:
     async with await get_async_session() as session:
         res = await session.execute(
@@ -156,6 +161,7 @@ async def get_user(user_id: int, _: None = Depends(admin_required)) -> UserSumma
 
 
 @router.patch("/users/{user_id}/role", response_model=UserSummary, status_code=status.HTTP_200_OK)
+@limiter.limit("20/minute")
 async def update_user_role(user_id: int, payload: UpdateRoleRequest, _: None = Depends(admin_required)) -> UserSummary:
     async with await get_async_session() as session:
         res = await session.execute(select(UserORM).where(UserORM.id == user_id).limit(1))
@@ -174,6 +180,7 @@ class UpdatePasswordRequest(BaseModel):
 
 
 @router.patch("/users/{user_id}/password", response_model=MessageResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("20/minute")
 async def update_user_password(
     user_id: int,
     payload: UpdatePasswordRequest,
@@ -221,6 +228,7 @@ class RefreshTokenRequest(BaseModel):
 
 
 @router.post("/refresh", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
 async def refresh_token_endpoint(payload: RefreshTokenRequest) -> TokenResponse:
     """Refresh an access token using a valid refresh token."""
     from app.shared.config import get_settings

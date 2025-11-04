@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_db: int = Field(default=0, alias="REDIS_DB")
 
+    # Rate limiting configuration (SlowAPI)
+    # Comma-separated list, supports any SlowAPI/flask-limiter syntax, e.g., "100/minute", "1000 per hour"
+    rate_limit_defaults: str = Field(default="100/minute", alias="RATE_LIMIT_DEFAULTS")
+    # Exempt IPs to bypass rate limits (helpful for local tests and health checks); comma-separated
+    rate_limit_exempt_ips: str = Field(default="127.0.0.1,::1", alias="RATE_LIMIT_EXEMPT_IPS")
+    # Exempt exact request paths (e.g., docs and OpenAPI) to avoid rate limiting docs UIs; comma-separated
+    rate_limit_exempt_paths: str = Field(default="/docs,/redoc,/openapi.json", alias="RATE_LIMIT_EXEMPT_PATHS")
+
     # Celery configuration (RabbitMQ by default; tests may set eager mode)
     celery_broker_url: str = Field(default="pyamqp://guest@localhost//", alias="CELERY_BROKER_URL")
     celery_result_backend: str = Field(default="rpc://", alias="CELERY_RESULT_BACKEND")

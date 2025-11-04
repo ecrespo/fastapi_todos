@@ -122,6 +122,7 @@ async def health_check():
 
 
 @app.get("/redis-check")
+@limiter.limit("60/minute")
 async def test_redis(redis_client: aioredis.Redis = Depends(get_redis_client)):
     # Set a value with a 60-second expiration
     await redis_client.set("my_key", "hello", ex=60)
