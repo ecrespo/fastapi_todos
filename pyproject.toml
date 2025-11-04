@@ -23,6 +23,7 @@ dependencies = [
     "pyjwt>=2.8.0",
     "structlog>=25.5.0",
     "colorama>=0.4.6",
+    "prometheus-client>=0.20.0",
 ]
 
 [dependency-groups]

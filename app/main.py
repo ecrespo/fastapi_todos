@@ -1,13 +1,14 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis
 from secure import Secure
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.todos import router as todo_router
@@ -15,6 +16,7 @@ from app.middlewares import (
     ErrorHandlingMiddleware,
     LoggingMiddleware,
     ProcessTimeHeaderMiddleware,
+    MetricsMiddleware,
 )
 from app.shared.config import Environment, get_settings
 from app.shared.db import close_async_connection, ensure_auth_token_async, init_db_async
@@ -78,6 +80,9 @@ app.add_middleware(GZipMiddleware)
 app.add_middleware(LoggingMiddleware, logger=logger)
 app.add_middleware(ProcessTimeHeaderMiddleware)
 
+# Prometheus HTTP Metrics for todos endpoints
+app.add_middleware(MetricsMiddleware)
+
 # Error handling (outermost)
 app.add_middleware(ErrorHandlingMiddleware, logger=logger)
 
@@ -129,6 +134,12 @@ async def test_redis(redis_client: aioredis.Redis = Depends(get_redis_client)):
     # Get the value back
     value = await redis_client.get("my_key")
     return {"my_key": value}
+
+
+@app.get("/metrics")
+async def metrics_endpoint() -> Response:
+    data = generate_latest()
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 
 app.include_router(todo_router, prefix="/api/v1")

@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # Exempt IPs to bypass rate limits (helpful for local tests and health checks); comma-separated
     rate_limit_exempt_ips: str = Field(default="127.0.0.1,::1", alias="RATE_LIMIT_EXEMPT_IPS")
     # Exempt exact request paths (e.g., docs and OpenAPI) to avoid rate limiting docs UIs; comma-separated
-    rate_limit_exempt_paths: str = Field(default="/docs,/redoc,/openapi.json", alias="RATE_LIMIT_EXEMPT_PATHS")
+    rate_limit_exempt_paths: str = Field(default="/docs,/redoc,/openapi.json,/metrics", alias="RATE_LIMIT_EXEMPT_PATHS")
 
     # Celery configuration (RabbitMQ by default; tests may set eager mode)
     celery_broker_url: str = Field(default="pyamqp://guest@localhost//", alias="CELERY_BROKER_URL")
