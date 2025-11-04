@@ -1,6 +1,6 @@
 Project Development Guidelines (FastAPI Todos)
 
-Audience: Senior Python/FastAPI engineers. This document captures project‑specific, verified workflows and caveats to accelerate development and debugging. Updated to reflect the current repository state as of 2025-10-21 19:13 local time.
+Audience: Senior Python/FastAPI engineers. This document captures project‑specific, verified workflows and caveats to accelerate development and debugging. Updated to reflect the current repository state as of 2025-11-04 18:41 local time.
 
 1) Build and Configuration
 
@@ -25,6 +25,10 @@ Audience: Senior Python/FastAPI engineers. This document captures project‑spec
     - TODO_DB_DIR: directory for the SQLite DB (defaults to settings module dir); created if missing.
     - TODO_DB_FILENAME: DB filename (default: todos.db). Set to :memory: for an in-memory SQLite database.
     - AUTH_DEFAULT_TOKEN: set to fix the default token value created/ensured at startup; otherwise a token is generated and logged once.
+  - Rate limiting (SlowAPI):
+    - RATE_LIMIT_DEFAULTS: default limits applied globally (e.g., "100/minute").
+    - RATE_LIMIT_EXEMPT_IPS: comma-separated list of IPs exempt from rate limiting (e.g., 127.0.0.1,::1).
+    - RATE_LIMIT_EXEMPT_PATHS: exact paths exempt from rate limiting (e.g., /docs,/redoc,/openapi.json,/metrics).
   - Database backend selection (see app/shared/db.py & README):
     - DB_ENGINE: sqlite (default), mysql, or postgresql. Primarily for local/dev defaults.
     - DATABASE_URL: full async DSN; if provided, it overrides granular parts.
@@ -62,7 +66,14 @@ Audience: Senior Python/FastAPI engineers. This document captures project‑spec
   - Volumes: ./logs and ./app mounted for live code changes; .env is mounted read-only into the container.
   - Port caveat: The app defaults to port 8000 (see run.py). If you change PORT in your .env, update the compose ports accordingly.
   - Timezone: Centralized via .env. Set TZ=America/Caracas in your .env. All services load .env via env_file and pass TZ=${TZ} so they share the same timezone.
-  - Services: docker-compose provisions Redis, RabbitMQ, Celery worker, and PostgreSQL for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
+  - Services: docker-compose provisions Redis, RabbitMQ, Celery worker, PostgreSQL, Prometheus, Grafana, and Traefik for local development. PostgreSQL is exposed on the host via POSTGRES_HOST_PORT (defaults to 55432 if not set). See docker-compose.yaml for details.
+  - Reverse proxy (Traefik):
+    - API via http://localhost (Traefik routes PathPrefix(`/`) to the api service on port 8000).
+    - Dashboard: http://localhost:${TRAEFIK_DASHBOARD_PORT:-8099}. If the port is in use, set TRAEFIK_DASHBOARD_PORT in .env.
+  - Observability:
+    - Metrics endpoint: http://localhost:8000/metrics (exempt from rate limiting by default).
+    - Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}
+    - Grafana: http://localhost:${GRAFANA_PORT:-3000} (default admin/admin; change in .env)
 
 2) Testing
 
@@ -117,12 +128,7 @@ Audience: Senior Python/FastAPI engineers. This document captures project‑spec
   - slowapi is initialized in app.main. Current limits are high enough to not interfere with typical TestClient flows.
   - If you loop heavily over the same limited endpoint, either increase limits for that test via monkeypatch or distribute calls across endpoints.
 
-- Verified flows (executed locally before writing this document)
-  - On 2025-10-19 12:33 local time:
-    - Baseline run: uv run pytest -q -> 9 passed.
-    - Demo test (temporary file tests/test_demo_guidelines.py):
-      - uv run pytest -q tests/test_demo_guidelines.py -> 1 passed.
-      - The temporary test file was removed afterward to keep the repo clean.
+- Verified flows (executed locally)
   - On 2025-10-21 19:13 local time:
     - Baseline run: uv run pytest -q -> 22 passed.
     - New tests added covering auth and RBAC flows:
