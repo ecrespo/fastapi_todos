@@ -60,6 +60,36 @@ uv run pre-commit autoupdate
 ```bash
 # Saltar pre-commit en un commit específico
 git commit --no-verify -m "mensaje"
+# O usar la versión corta
+git commit -n -m "mensaje"
+```
+
+### Deshabilitar Pre-commit para PyCharm
+
+Si prefieres hacer commits desde PyCharm sin pre-commit:
+
+**Opción 1: Configurar PyCharm**
+1. File → Settings → Version Control → Commit
+2. Desmarcar "Run Git hooks"
+
+**Opción 2: Script de Toggle**
+```bash
+# Deshabilitar temporalmente
+./scripts/toggle-precommit.sh
+
+# Hacer commits desde PyCharm
+
+# Re-habilitar cuando quieras
+./scripts/toggle-precommit.sh
+```
+
+**Opción 3: Desinstalar Permanentemente**
+```bash
+# Desinstalar hooks
+uv run pre-commit uninstall
+
+# Para reinstalar después
+uv run pre-commit install
 ```
 
 ### Comandos de Desarrollo
