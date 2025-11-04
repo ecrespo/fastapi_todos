@@ -451,3 +451,37 @@ Notes:
 - If you choose MySQL or PostgreSQL, ensure the appropriate async driver is installed: aiomysql or asyncpg.
 - On startup, the application creates tables via SQLAlchemy Base.metadata.create_all for the selected backend.
 - The auth token bootstrap now uses an async path that works across backends.
+
+
+
+## Observabilidad: Prometheus + Grafana
+Este proyecto ya expone métricas Prometheus y ahora incluye un stack de observabilidad listo en docker-compose.
+
+- Endpoint de métricas (Prometheus): `http://localhost:8000/metrics`
+  - Expuesto por la app (FastAPI) y ya scrapeado por Prometheus.
+- Prometheus UI: `http://localhost:${PROMETHEUS_PORT:-9090}` (por defecto 9090)
+- Grafana UI: `http://localhost:${GRAFANA_PORT:-3000}` (por defecto 3000)
+  - Usuario/clave por defecto (solo para dev): `${GRAFANA_ADMIN_USER:-admin}` / `${GRAFANA_ADMIN_PASSWORD:-admin}`
+  - Se provisiona automáticamente un datasource "Prometheus" apuntando a `http://prometheus:9090` dentro de la red de Docker.
+  - Se provisiona automáticamente un dashboard: "FastAPI Todos - Overview" con métricas HTTP y DB.
+
+Cómo levantar todo con Docker (incluyendo observabilidad):
+- `docker-compose up --build`
+
+Archivos relevantes:
+- `docker-compose.yaml`: añade los servicios `prometheus` y `grafana` y los conecta a la red `api_todo_network`.
+- `prometheus.yml`: scrapea `api_todo:8000/metrics` cada 15s.
+- `grafana/provisioning/datasources/datasource.yaml`: datasource Prometheus preconfigurado.
+- `grafana/provisioning/dashboards/dashboards.yaml` y `grafana/provisioning/dashboards/fastapi_todos_overview.json`: dashboard inicial.
+
+Variables de entorno útiles (ver `.env.example`):
+- `TZ` (recomendado definirlo, por ejemplo `America/Caracas`)
+- `PROMETHEUS_PORT` (host) — default 9090
+- `GRAFANA_PORT` (host) — default 3000
+- `TRAEFIK_DASHBOARD_PORT` (host) — default 8099
+- `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` — credenciales del admin de Grafana (cambiar en prod)
+
+Notas:
+- En despliegue local, Prometheus ya está configurado para leer `/metrics` de `api_todo`.
+- Si cambias los puertos en `.env`, recuerda reiniciar docker-compose.
+- El endpoint `/metrics` está exento del rate limiting por defecto (ver `RATE_LIMIT_EXEMPT_PATHS`).

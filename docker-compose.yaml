@@ -135,9 +135,31 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       - api_todo
+    networks:
+      - api_todo_network
+    restart: always
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: grafana
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
     networks:
       - api_todo_network
     restart: always
@@ -148,3 +170,4 @@ networks:
 
 volumes:
   pgdata:
+  grafana-data:
